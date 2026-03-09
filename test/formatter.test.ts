@@ -74,6 +74,22 @@ describe('formatter', () => {
       expect(result).not.toContain('stars');
     });
 
+    it('keeps explicitly included badges even when excluded', () => {
+      const badges: Badge[] = [
+        makeBadge({ type: 'stars', group: 'social', label: 'stars' }),
+      ];
+      const config: Config = {
+        ...DEFAULT_CONFIG,
+        badges: {
+          ...DEFAULT_CONFIG.badges,
+          exclude: ['stars'],
+          include: ['stars'],
+        },
+      };
+      const result = formatBadges(badges, config);
+      expect(result).toContain('stars');
+    });
+
     it('uses custom group order from config', () => {
       const badges: Badge[] = [
         makeBadge({ type: 'npm', group: 'distribution', label: 'npm' }),

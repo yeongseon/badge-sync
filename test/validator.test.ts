@@ -92,6 +92,16 @@ describe('validator', () => {
       const results = await validateBadges(badges, '/tmp', { timeout: 1000 });
       expect(results.filter((r) => r.issue === 'duplicate')).toHaveLength(0);
     });
+
+    it('detects duplicate custom badges by URL pair', async () => {
+      mockFetch.mockResolvedValue({ ok: true });
+      const badges = [
+        makeBadge({ type: 'custom', imageUrl: 'https://example.com/a.svg', linkUrl: 'https://example.com/a' }),
+        makeBadge({ type: 'custom', imageUrl: 'https://example.com/a.svg', linkUrl: 'https://example.com/a' }),
+      ];
+      const results = await validateBadges(badges, '/tmp', { timeout: 1000 });
+      expect(results.filter((r) => r.issue === 'duplicate')).toHaveLength(1);
+    });
   });
 
   describe('Workflow validation', () => {
@@ -109,6 +119,27 @@ describe('validator', () => {
       expect(workflow).toBeDefined();
       expect(workflow!.severity).toBe('error');
       expect(workflow!.fixable).toBe(false);
+    });
+  });
+
+  describe('Repository validation', () => {
+    it('reports mismatched repository references', async () => {
+      mockFetch.mockResolvedValue({ ok: true });
+      const badges = [
+        makeBadge({
+          type: 'license',
+          imageUrl: 'https://img.shields.io/github/license/old-owner/old-repo',
+          linkUrl: 'https://github.com/old-owner/old-repo/blob/main/LICENSE',
+        }),
+      ];
+      const results = await validateBadges(badges, '/tmp', {
+        timeout: 1000,
+        expectedOwner: 'new-owner',
+        expectedRepo: 'new-repo',
+      });
+      const mismatch = results.find((r) => r.issue === 'mismatched-repo');
+      expect(mismatch).toBeDefined();
+      expect(mismatch!.fixable).toBe(true);
     });
   });
 });

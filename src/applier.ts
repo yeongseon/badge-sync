@@ -185,9 +185,22 @@ export async function doctorBadges(
 	}
 
 	const metadata = await detectMetadata(cwd);
-	const badges = resolveBadges(metadata);
+	let currentBlock: string;
+	try {
+		currentBlock = await readBadgeBlock(readmePath);
+	} catch {
+		throw new Error(
+			`Badge block markers not found in ${config.readme}. Add these markers to your README:\n<!-- BADGES:START -->\n<!-- BADGES:END -->`,
+		);
+	}
+
+	const badges = parseExistingBadges(currentBlock).map((badge) =>
+		toExistingBadgeDefinition(badge),
+	);
 	const issues = await validateBadges(badges, cwd, {
 		timeout: options.timeout,
+		expectedOwner: metadata.owner,
+		expectedRepo: metadata.repo,
 	});
 
 	return { issues };
@@ -439,14 +452,19 @@ export function mergeBadgesWithExisting(
 		return formattedAutoDetected;
 	}
 
-	// Build a set of auto-detected badge image URLs for matching
-	const autoDetectedImageUrls = new Set(
-		autoDetectedBadges.map((b) => b.imageUrl),
-	);
+	const autoDetectedImageUrls = new Set(autoDetectedBadges.map((badge) => badge.imageUrl));
+	const autoDetectedTypes = new Set(autoDetectedBadges.map((badge) => badge.type));
 
-	// Find custom badges: existing badges whose image URL doesn't match any auto-detected badge
+	// Preserve only badges that are neither current auto-detected matches nor managed badge types.
 	const customBadges = existingParsed.filter(
-		(existing) => !autoDetectedImageUrls.has(existing.imageUrl),
+		(existing) => {
+			if (autoDetectedImageUrls.has(existing.imageUrl)) {
+				return false;
+			}
+
+			const inferredType = inferBadgeType(existing.imageUrl, existing.linkUrl);
+			return !inferredType || !autoDetectedTypes.has(inferredType);
+		},
 	);
 
 	// If no custom badges, return just the auto-detected formatted output
@@ -461,4 +479,82 @@ export function mergeBadgesWithExisting(
 	}
 
 	return `${formattedAutoDetected}\n${customLines.join("\n")}`;
+}
+
+function toExistingBadgeDefinition(existing: {
+	label: string;
+	imageUrl: string;
+	linkUrl: string;
+	raw: string;
+}): Badge {
+	const type = inferBadgeType(existing.imageUrl, existing.linkUrl) ?? "custom";
+	return {
+		type,
+		group: inferBadgeGroup(type),
+		label: existing.label,
+		imageUrl: existing.imageUrl,
+		linkUrl: existing.linkUrl,
+	};
+}
+
+function inferBadgeType(imageUrl: string, linkUrl: string): string | null {
+	if (imageUrl.includes("img.shields.io/npm/v/")) {
+		return "npm-version";
+	}
+	if (imageUrl.includes("img.shields.io/node/v/")) {
+		return "node-version";
+	}
+	if (imageUrl.includes("img.shields.io/pypi/v/")) {
+		return "pypi-version";
+	}
+	if (imageUrl.includes("img.shields.io/pypi/pyversions/")) {
+		return "python-version";
+	}
+	if (imageUrl.includes("img.shields.io/crates/v/")) {
+		return "crates-version";
+	}
+	if (imageUrl.includes("/actions/workflows/") && imageUrl.includes("/badge.svg")) {
+		const workflow = imageUrl.match(/\/actions\/workflows\/([^/]+)\/badge\.svg/i)?.[1];
+		const workflowName = workflow
+			? decodeURIComponent(workflow).replace(/\.(yml|yaml)$/i, "")
+			: "workflow";
+		return `github-actions-${workflowName}`;
+	}
+	if (imageUrl.includes("codecov.io/gh/") || imageUrl.includes("coveralls.io/")) {
+		return "coverage";
+	}
+	if (imageUrl.includes("img.shields.io/github/license/")) {
+		return "license";
+	}
+	if (imageUrl.includes("img.shields.io/github/stars/")) {
+		return "stars";
+	}
+	if (linkUrl.includes("/actions/workflows/")) {
+		const workflow = linkUrl.match(/\/actions\/workflows\/([^/?#]+)/i)?.[1];
+		const workflowName = workflow
+			? decodeURIComponent(workflow).replace(/\.(yml|yaml)$/i, "")
+			: "workflow";
+		return `github-actions-${workflowName}`;
+	}
+
+	return null;
+}
+
+function inferBadgeGroup(type: string): Badge["group"] {
+	if (type === "npm-version" || type === "pypi-version" || type === "crates-version") {
+		return "distribution";
+	}
+	if (type === "node-version" || type === "python-version") {
+		return "runtime";
+	}
+	if (type.startsWith("github-actions-")) {
+		return "build";
+	}
+	if (type === "coverage") {
+		return "quality";
+	}
+	if (type === "license") {
+		return "metadata";
+	}
+	return "social";
 }

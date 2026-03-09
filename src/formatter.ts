@@ -7,9 +7,16 @@ import { DEFAULT_GROUP_ORDER } from './types.js';
 export function formatBadges(badges: Badge[], config?: Config): string {
   const order = config?.badges.order ?? DEFAULT_GROUP_ORDER;
   const exclude = config?.badges.exclude ?? [];
+  const include = config?.badges.include ?? [];
 
-  // Filter excluded badges
-  const filtered = badges.filter((b) => !exclude.includes(b.type));
+  // Explicit includes win over excludes.
+  const filtered = badges.filter((badge) => {
+    if (include.includes(badge.type)) {
+      return true;
+    }
+
+    return !exclude.includes(badge.type);
+  });
 
   // Sort by group order, then by original order within the same group
   const sorted = [...filtered].sort((a, b) => {

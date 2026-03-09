@@ -353,6 +353,40 @@ describe("applier", () => {
 				vi.unstubAllGlobals();
 			}
 		});
+
+		it("validates the current README badges rather than regenerated badges", async () => {
+			const cwd = copyFixture("javascript-project");
+			const { execSync } = await import("node:child_process");
+			execSync("git init", { cwd, stdio: "pipe" });
+			execSync(
+				"git remote add origin https://github.com/testuser/my-awesome-lib.git",
+				{ cwd, stdio: "pipe" },
+			);
+
+			writeFileSync(
+				resolve(cwd, "README.md"),
+				[
+					"# My Awesome Lib",
+					"",
+					"<!-- BADGES:START -->",
+					"[![license](https://img.shields.io/github/license/other/repo)](https://github.com/other/repo/blob/main/LICENSE)",
+					"<!-- BADGES:END -->",
+					"",
+				].join("\n"),
+			);
+
+			const mockFetch = vi.fn().mockResolvedValue({ ok: true });
+			vi.stubGlobal("fetch", mockFetch);
+
+			try {
+				const result = await doctorBadges(cwd, makeConfig(), { timeout: 1000 });
+				expect(
+					result.issues.some((issue) => issue.issue === "mismatched-repo"),
+				).toBe(true);
+			} finally {
+				vi.unstubAllGlobals();
+			}
+		});
 	});
 
 	describe("repairBadges", () => {
@@ -828,6 +862,25 @@ describe("applier", () => {
 			expect(result).toBe(
 				"[![custom](https://example.com/badge.svg)](https://example.com)",
 			);
+		});
+
+		it("replaces stale managed badges instead of preserving them as custom", () => {
+			const autoDetected = [
+				{
+					type: "license",
+					group: "metadata" as const,
+					label: "license",
+					imageUrl: "https://img.shields.io/github/license/new/repo",
+					linkUrl: "https://github.com/new/repo/blob/main/LICENSE",
+				},
+			];
+			const formatted =
+				"[![license](https://img.shields.io/github/license/new/repo)](https://github.com/new/repo/blob/main/LICENSE)";
+			const current =
+				"[![license](https://img.shields.io/github/license/old/repo)](https://github.com/old/repo/blob/main/LICENSE)";
+
+			const result = mergeBadgesWithExisting(formatted, current, autoDetected);
+			expect(result).toBe(formatted);
 		});
 	});
 });

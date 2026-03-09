@@ -1,5 +1,5 @@
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { basename, join } from "node:path";
 import fg from "fast-glob";
@@ -88,6 +88,21 @@ export function detectReadmeFile(cwd: string): string {
 		"README.rst",
 		"readme.rst",
 	];
+
+	try {
+		const entries = new Map(
+			readdirSync(cwd).map((entry) => [entry.toLowerCase(), entry]),
+		);
+		for (const name of candidates) {
+			const actual = entries.get(name.toLowerCase());
+			if (actual) {
+				return actual;
+			}
+		}
+	} catch {
+		// Fall back to direct existence checks when directory listing fails.
+	}
+
 	for (const name of candidates) {
 		if (existsSync(join(cwd, name))) {
 			return name;

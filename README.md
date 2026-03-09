@@ -4,9 +4,9 @@
 [![npm version](https://img.shields.io/npm/v/badge-sync)](https://www.npmjs.com/package/badge-sync)
 [![node version](https://img.shields.io/node/v/badge-sync)](https://nodejs.org)
 [![ci workflow](https://github.com/yeongseon/badge-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/yeongseon/badge-sync/actions/workflows/ci.yml)
-[![coverage](https://codecov.io/gh/yeongseon/badge-sync/branch/main/graph/badge.svg)](https://codecov.io/gh/yeongseon/badge-sync)
 [![license](https://img.shields.io/github/license/yeongseon/badge-sync)](https://github.com/yeongseon/badge-sync/blob/main/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yeongseon/badge-sync)](https://github.com/yeongseon/badge-sync)
+[![coverage](https://codecov.io/gh/yeongseon/badge-sync/branch/main/graph/badge.svg)](https://codecov.io/gh/yeongseon/badge-sync)
 <!-- BADGES:END -->
 
 Keep your README badges clean, valid, and consistent.
