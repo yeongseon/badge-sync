@@ -20,6 +20,10 @@ export interface RepositoryMetadata {
   packageName: string | null;
   /** Per-ecosystem package names for multi-ecosystem projects */
   packageNames: Partial<Record<Ecosystem, string>>;
+  /** Detected coverage service (codecov, coveralls, or null for generic) */
+  coverageService: string | null;
+  /** Whether coverage tooling was detected in the project */
+  hasCoverage: boolean;
   repositoryUrl: string | null;
   owner: string | null;
   repo: string | null;

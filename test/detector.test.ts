@@ -63,6 +63,12 @@ describe('detector', () => {
       expect(meta.workflows).toContain('ci.yml');
     });
 
+    it('detects coverage tooling from vitest config in fixture project', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.hasCoverage).toBe(true);
+      expect(meta.coverageService).toBeNull();
+    });
+
     it('does not detect python or rust', async () => {
       const meta = await detectMetadata(cwd);
       expect(meta.ecosystem).not.toContain('python');
@@ -162,6 +168,8 @@ describe('detector', () => {
     it('returns null for all metadata fields', async () => {
       const meta = await detectMetadata(cwd);
       expect(meta.packageName).toBeNull();
+      expect(meta.coverageService).toBeNull();
+      expect(meta.hasCoverage).toBe(false);
       expect(meta.license).toBeNull();
       expect(meta.nodeVersion).toBeNull();
       expect(meta.pythonVersion).toBeNull();
@@ -298,6 +306,96 @@ describe('detector', () => {
       writeFileSync(resolve(cwd, 'LICENSE'), 'Some custom proprietary license terms...');
       const meta = await detectMetadata(cwd);
       expect(meta.license).toBeNull();
+    });
+  });
+
+  describe('coverage detection', () => {
+    it('detects coverage from vitest config', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'coverage-vitest');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, 'vitest.config.ts'), "export default { test: { coverage: { provider: 'v8' } } };\n");
+
+      const meta = await detectMetadata(cwd);
+      expect(meta.hasCoverage).toBe(true);
+      expect(meta.coverageService).toBeNull();
+    });
+
+    it('detects coverage from jest config', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'coverage-jest');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, 'jest.config.js'), 'export default {}\n');
+
+      const meta = await detectMetadata(cwd);
+      expect(meta.hasCoverage).toBe(true);
+      expect(meta.coverageService).toBeNull();
+    });
+
+    it('detects coverage from nyc config file', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'coverage-nyc');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, '.nycrc'), '{"all":true}\n');
+
+      const meta = await detectMetadata(cwd);
+      expect(meta.hasCoverage).toBe(true);
+      expect(meta.coverageService).toBeNull();
+    });
+
+    it('detects coverage from package.json scripts', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'coverage-script');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(
+        resolve(cwd, 'package.json'),
+        JSON.stringify({
+          name: 'coverage-script-pkg',
+          scripts: {
+            'test:coverage': 'vitest run --coverage',
+          },
+        }),
+      );
+
+      const meta = await detectMetadata(cwd);
+      expect(meta.hasCoverage).toBe(true);
+      expect(meta.coverageService).toBeNull();
+    });
+
+    it('detects coverage from .coveragerc file', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'coverage-python');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, '.coveragerc'), '[run]\nbranch = True\n');
+
+      const meta = await detectMetadata(cwd);
+      expect(meta.hasCoverage).toBe(true);
+      expect(meta.coverageService).toBeNull();
+    });
+
+    it('detects codecov coverage service', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'coverage-codecov');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, 'codecov.yml'), 'coverage:\n  status:\n    project: default\n');
+
+      const meta = await detectMetadata(cwd);
+      expect(meta.hasCoverage).toBe(true);
+      expect(meta.coverageService).toBe('codecov');
+    });
+
+    it('detects coveralls coverage service', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'coverage-coveralls');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, '.coveralls.yml'), 'repo_token: token\n');
+
+      const meta = await detectMetadata(cwd);
+      expect(meta.hasCoverage).toBe(true);
+      expect(meta.coverageService).toBe('coveralls');
+    });
+
+    it('does not detect coverage when no coverage files exist', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'coverage-none');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, 'package.json'), JSON.stringify({ name: 'no-coverage-pkg' }));
+
+      const meta = await detectMetadata(cwd);
+      expect(meta.hasCoverage).toBe(false);
+      expect(meta.coverageService).toBeNull();
     });
   });
 });

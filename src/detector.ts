@@ -3,7 +3,12 @@ import { join } from 'node:path';
 import { existsSync } from 'node:fs';
 import { execSync } from 'node:child_process';
 import fg from 'fast-glob';
-import type { RepositoryMetadata, Ecosystem } from './types.js';
+import type { RepositoryMetadata } from './types.js';
+
+interface CoverageDetection {
+  hasCoverage: boolean;
+  coverageService: string | null;
+}
 
 /**
  * Parse a TOML-like file for basic key-value extraction.
@@ -103,6 +108,8 @@ export async function detectMetadata(cwd: string): Promise<RepositoryMetadata> {
     ecosystem: [],
     packageName: null,
     packageNames: {},
+    coverageService: null,
+    hasCoverage: false,
     repositoryUrl: null,
     owner: null,
     repo: null,
@@ -113,7 +120,7 @@ export async function detectMetadata(cwd: string): Promise<RepositoryMetadata> {
   };
 
   // Detect ecosystems and package metadata in parallel
-  const [packageJson, pyprojectToml, cargoToml, workflows, licenseContent, gitRemote] =
+  const [packageJson, pyprojectToml, cargoToml, workflows, licenseContent, gitRemote, coverage] =
     await Promise.all([
       readFileSafe(join(cwd, 'package.json')),
       readFileSafe(join(cwd, 'pyproject.toml')),
@@ -121,7 +128,11 @@ export async function detectMetadata(cwd: string): Promise<RepositoryMetadata> {
       detectWorkflows(cwd),
       detectLicense(cwd),
       detectGitRemote(cwd),
+      detectCoverage(cwd),
     ]);
+
+  metadata.hasCoverage = coverage.hasCoverage;
+  metadata.coverageService = coverage.coverageService;
 
   // JavaScript / TypeScript
   if (packageJson) {
@@ -217,6 +228,110 @@ export async function detectMetadata(cwd: string): Promise<RepositoryMetadata> {
   }
 
   return metadata;
+}
+
+async function detectCoverage(cwd: string): Promise<CoverageDetection> {
+  const hasCodecovConfig = existsSync(join(cwd, 'codecov.yml')) || existsSync(join(cwd, '.codecov.yml'));
+  const hasCoverallsConfig = existsSync(join(cwd, '.coveralls.yml'));
+
+  const coverageService = hasCodecovConfig ? 'codecov' : hasCoverallsConfig ? 'coveralls' : null;
+
+  const [packageJson, pyprojectToml, pytestIni, setupCfg, vitestTs, vitestJs] = await Promise.all([
+    readFileSafe(join(cwd, 'package.json')),
+    readFileSafe(join(cwd, 'pyproject.toml')),
+    readFileSafe(join(cwd, 'pytest.ini')),
+    readFileSafe(join(cwd, 'setup.cfg')),
+    readFileSafe(join(cwd, 'vitest.config.ts')),
+    readFileSafe(join(cwd, 'vitest.config.js')),
+  ]);
+
+  const hasVitestCoverage = [vitestTs, vitestJs].some((config) => config !== null && /\bcoverage\b/i.test(config));
+  const hasJestCoverage = (await fg(['jest.config.*'], { cwd, onlyFiles: true, deep: 1 })).length > 0;
+  const hasNycCoverage = ['.nycrc', '.nycrc.json', '.nycrc.yml', 'nyc.config.js']
+    .some((file) => existsSync(join(cwd, file)));
+
+  const hasC8ConfigFile = ['.c8rc', '.c8rc.json'].some((file) => existsSync(join(cwd, file)));
+  const packageJsonObject = parseJsonObject(packageJson);
+  const hasC8InPackageJson =
+    packageJsonObject !== null &&
+    'c8' in packageJsonObject &&
+    typeof packageJsonObject.c8 === 'object' &&
+    packageJsonObject.c8 !== null;
+
+  const scripts = packageJsonObject?.scripts;
+  const hasCoverageScript =
+    typeof scripts === 'object' &&
+    scripts !== null &&
+    Object.entries(scripts).some(([scriptName, scriptCommand]) => {
+      if (typeof scriptCommand !== 'string') return false;
+      return /coverage/i.test(scriptName) || /coverage/i.test(scriptCommand);
+    });
+
+  const hasPytestCoverageInPyproject =
+    pyprojectToml !== null &&
+    hasTomlSection(pyprojectToml, 'tool.pytest.ini_options') &&
+    /(--cov\b|\bcoverage\b)/i.test(pyprojectToml);
+  const hasPytestCoverageInPytestIni =
+    pytestIni !== null && /\[pytest\]/i.test(pytestIni) && /(--cov\b|\bcoverage\b)/i.test(pytestIni);
+  const hasPytestCoverageInSetupCfg =
+    setupCfg !== null && /\[tool:pytest\]/i.test(setupCfg) && /(--cov\b|\bcoverage\b)/i.test(setupCfg);
+  const hasCoverageRc = existsSync(join(cwd, '.coveragerc'));
+  const hasCoverageToolSection =
+    pyprojectToml !== null && hasTomlSection(pyprojectToml, 'tool.coverage');
+
+  const hasTarpaulinConfig =
+    existsSync(join(cwd, 'tarpaulin.toml')) || existsSync(join(cwd, '.tarpaulin.toml'));
+  const workflowFiles = await fg(['*.yml', '*.yaml'], {
+    cwd: join(cwd, '.github', 'workflows'),
+    onlyFiles: true,
+    deep: 1,
+    suppressErrors: true,
+  });
+  const workflowContents = await Promise.all(
+    workflowFiles.map((workflow) => readFileSafe(join(cwd, '.github', 'workflows', workflow))),
+  );
+  const hasTarpaulinWorkflow = workflowContents.some(
+    (content) => content !== null && /cargo(?:-|\s+)tarpaulin/i.test(content),
+  );
+
+  const hasCoverageTooling =
+    hasVitestCoverage ||
+    hasJestCoverage ||
+    hasNycCoverage ||
+    hasC8ConfigFile ||
+    hasC8InPackageJson ||
+    hasCoverageScript ||
+    hasPytestCoverageInPyproject ||
+    hasPytestCoverageInPytestIni ||
+    hasPytestCoverageInSetupCfg ||
+    hasCoverageRc ||
+    hasCoverageToolSection ||
+    hasTarpaulinConfig ||
+    hasTarpaulinWorkflow;
+
+  return {
+    hasCoverage: hasCoverageTooling || hasCodecovConfig || hasCoverallsConfig,
+    coverageService,
+  };
+}
+
+function parseJsonObject(content: string | null): Record<string, unknown> | null {
+  if (content === null) return null;
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    if (typeof parsed === 'object' && parsed !== null) {
+      return parsed as Record<string, unknown>;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function hasTomlSection(content: string, section: string): boolean {
+  const escapedSection = section.replaceAll('.', '\\.');
+  const sectionRegex = new RegExp(`^\\[${escapedSection}\\]`, 'm');
+  return sectionRegex.test(content);
 }
 
 async function readFileSafe(filePath: string): Promise<string | null> {
