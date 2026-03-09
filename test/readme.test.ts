@@ -1,9 +1,9 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   extractBadgeBlock,
-  replaceBadgeBlock,
   hasBadgeBlock,
   parseExistingBadges,
+  replaceBadgeBlock,
 } from '../src/readme.js';
 
 describe('readme', () => {
@@ -186,6 +186,24 @@ describe('readme', () => {
       const badges = parseExistingBadges(line);
       expect(badges).toHaveLength(1);
       expect(badges[0].raw).toBe(line);
+    });
+
+    it('parses HTML badge patterns', () => {
+      const block = '<a href="https://example.com"><img src="https://example.com/badge.svg" alt="badge" /></a>';
+      const result = parseExistingBadges(block);
+      expect(result).toHaveLength(1);
+      expect(result[0].imageUrl).toBe('https://example.com/badge.svg');
+      expect(result[0].linkUrl).toBe('https://example.com');
+      expect(result[0].label).toBe('badge');
+    });
+
+    it('parses multi-line HTML badge patterns', () => {
+      const block = '<a href="https://github.com/test/repo/actions">\n  <img src="https://github.com/test/repo/badge.svg" alt="CI" />\n</a>';
+      const result = parseExistingBadges(block);
+      expect(result).toHaveLength(1);
+      expect(result[0].label).toBe('CI');
+      expect(result[0].imageUrl).toBe('https://github.com/test/repo/badge.svg');
+      expect(result[0].linkUrl).toBe('https://github.com/test/repo/actions');
     });
   });
 });

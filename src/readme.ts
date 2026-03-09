@@ -93,6 +93,9 @@ export function hasBadgeBlock(content: string): boolean {
 
 /** Regex to match a markdown badge line: [![label](imageUrl)](linkUrl) */
 const BADGE_LINE_REGEX = /^\[!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)$/;
+const HTML_BADGE_REGEX = /<a\s+href=["']([^"']+)["'][^>]*>\s*(<img\b[^>]*\/?>)\s*<\/a>/i;
+const HTML_IMG_SRC_REGEX = /\bsrc=["']([^"']+)["']/i;
+const HTML_IMG_ALT_REGEX = /\balt=["']([^"']*)["']/i;
 
 /** A parsed badge line from existing README content */
 export interface ParsedBadgeLine {
@@ -112,9 +115,10 @@ export function parseExistingBadges(blockContent: string): ParsedBadgeLine[] {
 
   const lines = blockContent.split('\n');
   const badges: ParsedBadgeLine[] = [];
+  const htmlBadgeStartRegex = /^<a\s+href=/i;
 
-  for (const line of lines) {
-    const trimmed = line.trim();
+  for (let index = 0; index < lines.length; index += 1) {
+    const trimmed = lines[index].trim();
     if (trimmed === '') continue;
 
     const match = BADGE_LINE_REGEX.exec(trimmed);
@@ -125,6 +129,39 @@ export function parseExistingBadges(blockContent: string): ParsedBadgeLine[] {
         linkUrl: match[3],
         raw: trimmed,
       });
+      continue;
+    }
+
+    if (!htmlBadgeStartRegex.test(trimmed)) {
+      continue;
+    }
+
+    const htmlLines = [trimmed];
+    let htmlMatch = HTML_BADGE_REGEX.exec(trimmed);
+
+    let scan = index + 1;
+    while (!htmlMatch && scan < lines.length) {
+      htmlLines.push(lines[scan].trim());
+      const candidate = htmlLines.join(' ');
+      htmlMatch = HTML_BADGE_REGEX.exec(candidate);
+      scan += 1;
+    }
+
+    if (htmlMatch) {
+      const imgTag = htmlMatch[2];
+      const srcMatch = HTML_IMG_SRC_REGEX.exec(imgTag);
+      if (!srcMatch) {
+        index = scan - 1;
+        continue;
+      }
+      const altMatch = HTML_IMG_ALT_REGEX.exec(imgTag);
+      badges.push({
+        label: altMatch?.[1] ?? '',
+        imageUrl: srcMatch[1],
+        linkUrl: htmlMatch[1],
+        raw: htmlLines.join('\n'),
+      });
+      index = scan - 1;
     }
   }
 
