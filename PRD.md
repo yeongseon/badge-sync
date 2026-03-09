@@ -159,7 +159,7 @@ Badge-to-group mapping:
 | `node-version`     | Runtime        | `package.json` with `engines.node`         |
 | `python-version`   | Runtime        | `pyproject.toml` with `requires-python`    |
 | `github-actions`   | Build / CI     | `.github/workflows/*.yml` detected (one badge per workflow) |
-| `coverage`         | Quality        | (future — not in MVP)                      |
+| `coverage`         | Quality        | Codecov, Coveralls, generic                |
 | `license`          | Metadata       | `LICENSE*` file detected                   |
 | `stars`            | Social         | GitHub remote detected                     |
 
@@ -339,9 +339,9 @@ Initial version will support:
 Possible future extensions include:
 
 - additional ecosystem support (Go, Java, etc.)
-- coverage badge detection
+- ~~coverage badge detection~~ (implemented)
 - documentation badge detection
-- GitHub Action distribution
+- ~~GitHub Action distribution~~ (implemented)
 - interactive CLI setup
 - monorepo support
 - repository-wide badge policies
