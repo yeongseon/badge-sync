@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { formatBadges, renderBadge } from '../src/formatter.js';
 import type { Badge, Config } from '../src/types.js';
-import { DEFAULT_CONFIG } from '../src/types.js';
+import { DEFAULT_CONFIG } from '../src/config.js';
 
 function makeBadge(overrides: Partial<Badge> = {}): Badge {
   return {

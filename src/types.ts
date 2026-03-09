@@ -4,15 +4,6 @@ export type Ecosystem = 'javascript' | 'python' | 'rust';
 /** Badge group for ordering */
 export type BadgeGroup = 'distribution' | 'runtime' | 'build' | 'quality' | 'metadata' | 'social';
 
-/** Default badge group ordering */
-export const DEFAULT_GROUP_ORDER: BadgeGroup[] = [
-  'distribution',
-  'runtime',
-  'build',
-  'quality',
-  'metadata',
-  'social',
-];
 
 /** Repository metadata collected by detector */
 export interface RepositoryMetadata {
@@ -75,12 +66,3 @@ export interface Config {
   };
 }
 
-/** Default configuration */
-export const DEFAULT_CONFIG: Config = {
-  readme: 'README.md',
-  badges: {
-    order: [...DEFAULT_GROUP_ORDER],
-    exclude: [],
-    include: [],
-  },
-};

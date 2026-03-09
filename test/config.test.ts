@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { resolve } from 'node:path';
 import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, cpSync } from 'node:fs';
 import { loadConfig, findConfigFile } from '../src/config.js';
-import { DEFAULT_GROUP_ORDER } from '../src/types.js';
+import { DEFAULT_GROUP_ORDER } from '../src/config.js';
 
 const TMP = resolve(import.meta.dirname, '.tmp-config');
 

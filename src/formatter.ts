@@ -1,5 +1,5 @@
 import type { Badge, BadgeGroup, Config } from './types.js';
-import { DEFAULT_GROUP_ORDER } from './types.js';
+import { DEFAULT_GROUP_ORDER } from './config.js';
 
 /**
  * Sort badges by group ordering and render as markdown.
