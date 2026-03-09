@@ -22,7 +22,8 @@
     "test:coverage": "vitest run --coverage",
     "lint": "tsc --noEmit",
     "test:e2e": "./scripts/e2e-repos.sh",
-    "test:e2e:quick": "./scripts/e2e-repos.sh --quick"
+    "test:e2e:quick": "./scripts/e2e-repos.sh --quick",
+    "prepare": "husky"
   },
   "keywords": [
     "badge",
@@ -59,6 +60,7 @@
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@vitest/coverage-v8": "^2.1.0",
+    "husky": "^9.1.7",
     "typescript": "^5.5.0",
     "vitest": "^2.1.0"
   }
