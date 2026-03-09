@@ -11,6 +11,28 @@ interface CoverageDetection {
 	coverageService: string | null;
 }
 
+export const UTILITY_WORKFLOW_PATTERNS = [
+	"stale",
+	"labeler",
+	"label-sync",
+	"greetings",
+	"welcome",
+	"lock",
+	"auto-merge",
+	"automerge",
+	"dependabot",
+	"renovate",
+	"maintenance",
+	"cleanup",
+	"close-issues",
+	"assign",
+] as const;
+
+export function isUtilityWorkflow(filename: string): boolean {
+	const name = filename.replace(/\.(yml|yaml)$/, "").toLowerCase();
+	return UTILITY_WORKFLOW_PATTERNS.some((pattern) => name.includes(pattern));
+}
+
 /**
  * Parse a TOML-like file for basic key-value extraction.
  * This is a minimal parser sufficient for pyproject.toml and Cargo.toml.
@@ -587,7 +609,7 @@ async function detectWorkflows(cwd: string): Promise<string[]> {
 	}
 
 	const files = await fg(["*.yml", "*.yaml"], { cwd: workflowDir });
-	return files.sort();
+	return files.filter((file) => !isUtilityWorkflow(file)).sort();
 }
 
 async function detectLicense(cwd: string): Promise<string | null> {

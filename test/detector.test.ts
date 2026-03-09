@@ -1,7 +1,11 @@
 import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { detectMetadata } from "../src/detector.js";
+import {
+	detectMetadata,
+	isUtilityWorkflow,
+	UTILITY_WORKFLOW_PATTERNS,
+} from "../src/detector.js";
 
 const FIXTURES = resolve(import.meta.dirname, "fixtures");
 
@@ -62,6 +66,30 @@ describe("detector", () => {
 		it("detects workflow files", async () => {
 			const meta = await detectMetadata(cwd);
 			expect(meta.workflows).toContain("ci.yml");
+		});
+
+		it("excludes utility workflows like stale, labeler, maintenance", async () => {
+			const cwd = resolve(TMP_DETECTOR, "workflow-filter");
+			mkdirSync(resolve(cwd, ".github", "workflows"), { recursive: true });
+			writeFileSync(resolve(cwd, ".github", "workflows", "ci.yml"), "name: CI");
+			writeFileSync(resolve(cwd, ".github", "workflows", "test.yml"), "name: Test");
+			writeFileSync(resolve(cwd, ".github", "workflows", "stale.yml"), "name: Stale");
+			writeFileSync(
+				resolve(cwd, ".github", "workflows", "labeler.yml"),
+				"name: Labeler",
+			);
+			writeFileSync(
+				resolve(cwd, ".github", "workflows", "maintenance.yml"),
+				"name: Maintenance",
+			);
+			writeFileSync(resolve(cwd, "package.json"), JSON.stringify({ name: "test" }));
+
+			const metadata = await detectMetadata(cwd);
+			expect(metadata.workflows).toContain("ci.yml");
+			expect(metadata.workflows).toContain("test.yml");
+			expect(metadata.workflows).not.toContain("stale.yml");
+			expect(metadata.workflows).not.toContain("labeler.yml");
+			expect(metadata.workflows).not.toContain("maintenance.yml");
 		});
 
 		it("detects coverage tooling from vitest config in fixture project", async () => {
@@ -179,6 +207,12 @@ describe("detector", () => {
 	});
 
 	describe("Edge cases", () => {
+		it("exports utility workflow patterns and helper", () => {
+			expect(UTILITY_WORKFLOW_PATTERNS).toContain("stale");
+			expect(isUtilityWorkflow("dependabot.yml")).toBe(true);
+			expect(isUtilityWorkflow("codeql.yml")).toBe(false);
+		});
+
 		it("extracts repository URL from package.json string format", async () => {
 			const cwd = resolve(TMP_DETECTOR, "string-repo");
 			mkdirSync(cwd, { recursive: true });
