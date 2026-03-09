@@ -27,6 +27,7 @@ This project does not aim to:
 - manage documentation beyond badges
 - support every possible badge provider
 - generate badges that require runtime JavaScript or external services to render
+- provide its own badge rendering or hosting service (badge-sync is a badge manager, not a provider)
 
 ## CLI Design Principles
 

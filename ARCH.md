@@ -10,6 +10,17 @@ badge-sync is a small CLI package with five main concerns:
 - badge URL validation
 - README badge block management
 
+badge-sync is a **badge manager**, not a badge provider. It delegates badge rendering to external providers and focuses on managing the lifecycle of badge URLs in README files.
+
+```
+Provider Layer (external)          Manager Layer (badge-sync)
+├── Shields.io                     ├── detector
+├── GitHub Actions                 ├── resolver
+├── npm registry                   ├── validator
+├── PyPI                           ├── formatter
+└── crates.io                      └── applier
+```
+
 ## Module Pipeline
 
 ```

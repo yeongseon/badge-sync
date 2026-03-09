@@ -4,6 +4,8 @@
 
 **badge-sync** is a CLI tool that automatically detects, generates, validates, orders, and maintains README badges based on repository metadata.
 
+badge-sync is a **badge manager**, not a badge provider. It does not host or render badges itself. Instead, it integrates with existing badge providers — Shields.io, GitHub Actions, and package registry badges (npm, PyPI, crates.io) — to generate, validate, and maintain badge URLs.
+
 The tool analyzes repository configuration such as:
 
 - programming language
