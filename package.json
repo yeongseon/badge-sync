@@ -7,11 +7,16 @@
     "badge-sync": "./dist/index.js"
   },
   "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js"
+  },
   "files": [
     "dist"
   ],
   "scripts": {
     "build": "tsc",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
@@ -24,9 +29,23 @@
     "readme",
     "shields",
     "cli",
-    "markdown"
+    "markdown",
+    "github-actions",
+    "ci",
+    "npm",
+    "pypi",
+    "crates-io",
+    "monorepo"
   ],
-  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yeongseon/badge-sync.git"
+  },
+  "homepage": "https://github.com/yeongseon/badge-sync#readme",
+  "bugs": {
+    "url": "https://github.com/yeongseon/badge-sync/issues"
+  },
+  "author": "yeongseon",
   "license": "MIT",
   "engines": {
     "node": ">=20"
