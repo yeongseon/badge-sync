@@ -67,6 +67,9 @@ Add badge markers to your README:
 Then run:
 
 ```bash
+# Initialize badge-sync in your project
+badge-sync init
+
 # Generate and apply badges
 badge-sync apply
 
@@ -154,8 +157,8 @@ With options:
 - [ ] Additional ecosystems (Go, Java)
 - [x] Coverage badge detection
 - [x] GitHub Action distribution
-- [ ] Interactive CLI setup
-- [ ] Monorepo support
+- [x] Interactive CLI setup
+- [x] Monorepo support
 
 ## Documentation
 

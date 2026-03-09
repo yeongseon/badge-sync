@@ -5,8 +5,10 @@
 ```bash
 badge-sync apply [options]
 badge-sync check [options]
+badge-sync list [options]
 badge-sync doctor [options]
 badge-sync repair [options]
+badge-sync init [options]
 badge-sync --version
 badge-sync --help
 ```
@@ -32,6 +34,13 @@ badge-sync --help
 - prints what would change without writing any files
 - applies to `apply` and `repair` commands
 
+### `--markers-only`
+
+- optional
+- default: `false`
+- inserts badge block markers without running badge detection/apply
+- applies to `init` command
+
 ## `apply`
 
 Generate and apply badges to the README.
@@ -51,6 +60,12 @@ Generate and apply badges to the README.
 `--dry-run`
 
 - prints the generated badge block to stdout without modifying the README
+
+`--package <name>`
+
+- targets a specific monorepo package
+- detects metadata from the selected package directory
+- reads and writes `README.md` in the selected package directory
 
 ### Output
 
@@ -88,6 +103,14 @@ Validate badge configuration and ordering against the current README.
 3. Reads the current badge block from the README.
 4. Compares expected vs. current content.
 
+### Options
+
+`--package <name>`
+
+- targets a specific monorepo package
+- detects metadata from the selected package directory
+- reads `README.md` in the selected package directory
+
 ### Output
 
 On match:
@@ -120,6 +143,34 @@ Exit code `1` when:
 ```
 
 The `check` command is designed for CI enforcement. A non-zero exit code fails the pipeline.
+
+## `list`
+
+List detected badges and monorepo packages without applying changes.
+
+### Behavior
+
+1. Detects repository metadata from the current directory.
+2. Detects monorepo packages when workspace configuration exists.
+3. Resolves badges from detected metadata.
+4. Prints monorepo package information (if any).
+5. Prints all detected badges.
+
+### Output
+
+On monorepo projects:
+
+- prints detected package names, ecosystems, and relative paths
+- prints detected badges for the root project metadata
+
+On non-monorepo projects:
+
+- prints `Monorepo packages: none`
+- prints detected badges
+
+### Network
+
+- **no network calls** — `list` works fully offline
 
 ## `doctor`
 
@@ -223,6 +274,60 @@ Exit code `1` when:
 
 - **makes network calls** — same as `doctor` for diagnostic phase
 
+## `init`
+
+Initialize badge-sync in your project with a guided non-interactive flow.
+
+### Behavior
+
+1. Loads config and resolves README path.
+2. Creates the README file if it does not exist (`# <directory-name>`).
+3. Checks for existing badge markers.
+4. If markers exist, reports that setup is already complete and exits.
+5. If markers do not exist, inserts:
+   - `<!-- BADGES:START -->`
+   - `<!-- BADGES:END -->`
+6. Marker placement:
+   - after the first `# ` heading line when present
+   - otherwise at the top of the README
+7. By default, runs the normal badge pipeline (`detectMetadata` -> `resolveBadges` -> `formatBadges`) and writes badges into the new marker block.
+8. Prints a setup summary (README creation, marker insertion, badge count, detected badge labels).
+
+### Options
+
+`--markers-only`
+
+- inserts markers only
+- skips badge detection and application
+
+### Output
+
+On first setup:
+
+- prints marker insertion summary
+- prints created README path if README was created
+- prints applied badge count when badges are applied
+- exit code `0`
+
+When markers already exist:
+
+- prints "Badge markers already exist in README"
+- prints "Run `badge-sync apply` to update badges"
+- exit code `0`
+
+### Failure Conditions
+
+Exit code `1` when:
+
+- config path is invalid or config validation fails
+- README cannot be read or written
+- badge detection/apply fails in default mode
+
+### Network
+
+- **no network calls** in normal `init` mode (same as `apply`)
+- `--markers-only` also performs no network calls
+
 ## `--version`
 
 Prints the installed package version and exits.
@@ -257,7 +362,7 @@ Not currently supported:
 
 Likely future additions:
 
-- `badge-sync init` — create badge block markers in README
-- `badge-sync list` — list detected badges without applying
+- ~~`badge-sync init` — create badge block markers in README~~ (implemented)
+- ~~`badge-sync list` — list detected badges without applying~~ (implemented)
 - `--verbose` / `--quiet` output control
 - `--format json` for machine-readable output
