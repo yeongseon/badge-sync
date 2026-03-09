@@ -123,3 +123,72 @@ export function resolveBadges(metadata: RepositoryMetadata): Badge[] {
 
   return badges;
 }
+
+/**
+ * Infer badge type from image and link URLs.
+ * Used to identify managed badge types in existing badge blocks.
+ */
+export function inferBadgeType(imageUrl: string, linkUrl: string): string | null {
+  if (imageUrl.includes('img.shields.io/npm/v/')) {
+    return 'npm-version';
+  }
+  if (imageUrl.includes('img.shields.io/node/v/')) {
+    return 'node-version';
+  }
+  if (imageUrl.includes('img.shields.io/pypi/v/')) {
+    return 'pypi-version';
+  }
+  if (imageUrl.includes('img.shields.io/pypi/pyversions/')) {
+    return 'python-version';
+  }
+  if (imageUrl.includes('img.shields.io/crates/v/')) {
+    return 'crates-version';
+  }
+  if (imageUrl.includes('/actions/workflows/') && imageUrl.includes('/badge.svg')) {
+    const workflow = imageUrl.match(/\/actions\/workflows\/([^/]+)\/badge\.svg/i)?.[1];
+    const workflowName = workflow
+      ? decodeURIComponent(workflow).replace(/\.(yml|yaml)$/i, '')
+      : 'workflow';
+    return `github-actions-${workflowName}`;
+  }
+  if (imageUrl.includes('codecov.io/gh/') || imageUrl.includes('coveralls.io/')) {
+    return 'coverage';
+  }
+  if (imageUrl.includes('img.shields.io/github/license/')) {
+    return 'license';
+  }
+  if (imageUrl.includes('img.shields.io/github/stars/')) {
+    return 'stars';
+  }
+  if (linkUrl.includes('/actions/workflows/')) {
+    const workflow = linkUrl.match(/\/actions\/workflows\/([^/?#]+)/i)?.[1];
+    const workflowName = workflow
+      ? decodeURIComponent(workflow).replace(/\.(yml|yaml)$/i, '')
+      : 'workflow';
+    return `github-actions-${workflowName}`;
+  }
+
+  return null;
+}
+
+/**
+ * Infer badge group from badge type.
+ */
+export function inferBadgeGroup(type: string): Badge['group'] {
+  if (type === 'npm-version' || type === 'pypi-version' || type === 'crates-version') {
+    return 'distribution';
+  }
+  if (type === 'node-version' || type === 'python-version') {
+    return 'runtime';
+  }
+  if (type.startsWith('github-actions-')) {
+    return 'build';
+  }
+  if (type === 'coverage') {
+    return 'quality';
+  }
+  if (type === 'license') {
+    return 'metadata';
+  }
+  return 'social';
+}
