@@ -4,6 +4,7 @@
 [![npm version](https://img.shields.io/npm/v/badge-sync)](https://www.npmjs.com/package/badge-sync)
 [![node version](https://img.shields.io/node/v/badge-sync)](https://nodejs.org)
 [![ci workflow](https://github.com/yeongseon/badge-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/yeongseon/badge-sync/actions/workflows/ci.yml)
+[![coverage](https://codecov.io/gh/yeongseon/badge-sync/branch/main/graph/badge.svg)](https://codecov.io/gh/yeongseon/badge-sync)
 [![license](https://img.shields.io/github/license/yeongseon/badge-sync)](https://github.com/yeongseon/badge-sync/blob/main/LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/yeongseon/badge-sync)](https://github.com/yeongseon/badge-sync)
 <!-- BADGES:END -->
@@ -119,11 +120,29 @@ Supported config files: `badgesync.config.json`, `badgesync.config.yaml`, `badge
 
 ## CI Integration
 
-Add to your GitHub Actions workflow:
+### Using npx
 
 ```yaml
 - name: Check badges
   run: npx badge-sync check
+```
+
+### Using GitHub Action
+
+```yaml
+- uses: yeongseon/badge-sync@main
+  with:
+    command: check
+```
+
+With options:
+
+```yaml
+- uses: yeongseon/badge-sync@main
+  with:
+    command: apply
+    readme: docs/README.md
+    dry-run: true
 ```
 
 `badge-sync check` exits with code `1` if badges are out of sync, failing the pipeline.
@@ -133,8 +152,8 @@ Add to your GitHub Actions workflow:
 - [x] Core badge detection and generation
 - [x] `apply`, `check`, `doctor`, `repair` commands
 - [ ] Additional ecosystems (Go, Java)
-- [ ] Coverage badge detection
-- [ ] GitHub Action distribution
+- [x] Coverage badge detection
+- [x] GitHub Action distribution
 - [ ] Interactive CLI setup
 - [ ] Monorepo support
 

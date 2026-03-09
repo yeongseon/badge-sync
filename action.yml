@@ -1,0 +1,45 @@
+name: 'badge-sync'
+description: 'Keep your README badges clean, valid, and consistent'
+author: 'yeongseon'
+
+inputs:
+  command:
+    description: 'Command to run: apply, check, doctor, repair'
+    required: false
+    default: 'check'
+  readme:
+    description: 'Path to README file'
+    required: false
+    default: 'README.md'
+  dry-run:
+    description: 'Run in dry-run mode (no file changes)'
+    required: false
+    default: 'false'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Install badge-sync
+      shell: bash
+      run: npm install -g badge-sync
+
+    - name: Run badge-sync
+      shell: bash
+      run: |
+        ARGS="${{ inputs.command }}"
+        if [ "${{ inputs.readme }}" != "README.md" ]; then
+          ARGS="$ARGS --readme ${{ inputs.readme }}"
+        fi
+        if [ "${{ inputs.dry-run }}" = "true" ]; then
+          ARGS="$ARGS --dry-run"
+        fi
+        badge-sync $ARGS
+
+branding:
+  icon: 'shield'
+  color: 'blue'
