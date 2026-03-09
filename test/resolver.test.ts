@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveBadges } from '../src/resolver.js';
+import { resolveBadges, inferBadgeType, inferBadgeGroup } from '../src/resolver.js';
 import type { RepositoryMetadata } from '../src/types.js';
 
 function makeMetadata(overrides: Partial<RepositoryMetadata> = {}): RepositoryMetadata {
@@ -304,3 +304,143 @@ describe('resolver', () => {
     });
   });
 });
+
+describe('inferBadgeType', () => {
+  it('returns npm-version for npm badge imageUrl', () => {
+    const result = inferBadgeType('https://img.shields.io/npm/v/my-lib', '');
+    expect(result).toBe('npm-version');
+  });
+
+  it('returns node-version for node badge imageUrl', () => {
+    const result = inferBadgeType('https://img.shields.io/node/v/my-lib', '');
+    expect(result).toBe('node-version');
+  });
+
+  it('returns pypi-version for pypi badge imageUrl', () => {
+    const result = inferBadgeType('https://img.shields.io/pypi/v/my-tool', '');
+    expect(result).toBe('pypi-version');
+  });
+
+  it('returns python-version for python badge imageUrl', () => {
+    const result = inferBadgeType('https://img.shields.io/pypi/pyversions/my-tool', '');
+    expect(result).toBe('python-version');
+  });
+
+  it('returns crates-version for crates badge imageUrl', () => {
+    const result = inferBadgeType('https://img.shields.io/crates/v/my-crate', '');
+    expect(result).toBe('crates-version');
+  });
+
+  it('returns github-actions-{workflow} for github actions badge imageUrl with matching regex', () => {
+    const result = inferBadgeType('https://github.com/user/repo/actions/workflows/ci.yml/badge.svg', '');
+    expect(result).toBe('github-actions-ci');
+  });
+
+  it('returns github-actions-workflow when imageUrl has actions badge but regex does not match', () => {
+    const result = inferBadgeType('https://github.com/user/repo/actions/workflows//badge.svg', '');
+    expect(result).toBe('github-actions-workflow');
+  });
+
+  it('returns coverage for codecov imageUrl', () => {
+    const result = inferBadgeType('https://codecov.io/gh/user/repo/branch/main/graph/badge.svg', '');
+    expect(result).toBe('coverage');
+  });
+
+  it('returns coverage for coveralls imageUrl', () => {
+    const result = inferBadgeType('https://coveralls.io/repos/github/user/repo/badge.svg', '');
+    expect(result).toBe('coverage');
+  });
+
+  it('returns license for github license badge imageUrl', () => {
+    const result = inferBadgeType('https://img.shields.io/github/license/user/repo', '');
+    expect(result).toBe('license');
+  });
+
+  it('returns stars for github stars badge imageUrl', () => {
+    const result = inferBadgeType('https://img.shields.io/github/stars/user/repo', '');
+    expect(result).toBe('stars');
+  });
+
+  it('returns github-actions-{workflow} for linkUrl with actions workflow when imageUrl does not match', () => {
+    const result = inferBadgeType('https://example.com/badge.png', 'https://github.com/user/repo/actions/workflows/ci.yml');
+    expect(result).toBe('github-actions-ci');
+  });
+
+  it('returns github-actions-workflow when linkUrl has actions badge but regex does not match', () => {
+    const result = inferBadgeType('https://example.com/badge.png', 'https://github.com/user/repo/actions/workflows/');
+    expect(result).toBe('github-actions-workflow');
+  });
+
+  it('returns null when neither imageUrl nor linkUrl match any known patterns', () => {
+    const result = inferBadgeType('https://example.com/unknown-badge.png', 'https://example.com');
+    expect(result).toBeNull();
+  });
+
+  it('handles URL encoded workflow names in imageUrl', () => {
+    const result = inferBadgeType('https://github.com/user/repo/actions/workflows/my%20workflow.yml/badge.svg', '');
+    expect(result).toBe('github-actions-my workflow');
+  });
+
+  it('handles .yaml extension in workflow names', () => {
+    const result = inferBadgeType('https://github.com/user/repo/actions/workflows/ci.yaml/badge.svg', '');
+    expect(result).toBe('github-actions-ci');
+  });
+});
+
+describe('inferBadgeGroup', () => {
+  it('returns distribution for npm-version', () => {
+    const result = inferBadgeGroup('npm-version');
+    expect(result).toBe('distribution');
+  });
+
+  it('returns distribution for pypi-version', () => {
+    const result = inferBadgeGroup('pypi-version');
+    expect(result).toBe('distribution');
+  });
+
+  it('returns distribution for crates-version', () => {
+    const result = inferBadgeGroup('crates-version');
+    expect(result).toBe('distribution');
+  });
+
+  it('returns runtime for node-version', () => {
+    const result = inferBadgeGroup('node-version');
+    expect(result).toBe('runtime');
+  });
+
+  it('returns runtime for python-version', () => {
+    const result = inferBadgeGroup('python-version');
+    expect(result).toBe('runtime');
+  });
+
+  it('returns build for github-actions-* badge types', () => {
+    const result = inferBadgeGroup('github-actions-ci');
+    expect(result).toBe('build');
+  });
+
+  it('returns build for various github-actions workflows', () => {
+    expect(inferBadgeGroup('github-actions-release')).toBe('build');
+    expect(inferBadgeGroup('github-actions-test')).toBe('build');
+  });
+
+  it('returns quality for coverage', () => {
+    const result = inferBadgeGroup('coverage');
+    expect(result).toBe('quality');
+  });
+
+  it('returns metadata for license', () => {
+    const result = inferBadgeGroup('license');
+    expect(result).toBe('metadata');
+  });
+
+  it('returns social for stars', () => {
+    const result = inferBadgeGroup('stars');
+    expect(result).toBe('social');
+  });
+
+  it('returns social for unknown badge type', () => {
+    const result = inferBadgeGroup('unknown-badge');
+    expect(result).toBe('social');
+  });
+});
+
