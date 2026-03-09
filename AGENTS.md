@@ -31,9 +31,14 @@ Read these first, in this order:
 badge-sync/
 ├── AGENTS.md
 ├── PRD.md
+├── ARCH.md
+├── DESIGN.md
+├── README.md
 ├── package.json
 ├── tsconfig.json
 ├── vitest.config.ts
+├── docs/
+│   └── CLI.md              # CLI command specification
 ├── src/
 │   ├── index.ts          # CLI entry point
 │   ├── cli.ts            # Command definitions (apply, check, doctor, repair)

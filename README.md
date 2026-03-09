@@ -119,8 +119,8 @@ Add to your GitHub Actions workflow:
 
 ## Roadmap
 
-- [x] Core badge detection and generation
-- [x] `apply`, `check`, `doctor`, `repair` commands
+- [ ] Core badge detection and generation
+- [ ] `apply`, `check`, `doctor`, `repair` commands
 - [ ] Additional ecosystems (Go, Java)
 - [ ] Coverage badge detection
 - [ ] GitHub Action distribution
