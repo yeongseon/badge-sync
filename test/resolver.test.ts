@@ -7,6 +7,8 @@ function makeMetadata(overrides: Partial<RepositoryMetadata> = {}): RepositoryMe
     ecosystem: [],
     packageName: null,
     packageNames: {},
+    isMonorepo: false,
+    packages: [],
     coverageService: null,
     hasCoverage: false,
     repositoryUrl: null,
@@ -20,6 +22,15 @@ function makeMetadata(overrides: Partial<RepositoryMetadata> = {}): RepositoryMe
   };
 }
 
+function expectBadge(badges: ReturnType<typeof resolveBadges>, type: string) {
+  const badge = badges.find((candidate) => candidate.type === type);
+  expect(badge).toBeDefined();
+  if (!badge) {
+    throw new Error(`Expected badge not found: ${type}`);
+  }
+  return badge;
+}
+
 describe('resolver', () => {
   describe('JavaScript badges', () => {
     it('generates npm-version badge for JS project with package name', () => {
@@ -30,11 +41,10 @@ describe('resolver', () => {
         repo: 'my-lib',
       });
       const badges = resolveBadges(meta);
-      const npm = badges.find((b) => b.type === 'npm-version');
-      expect(npm).toBeDefined();
-      expect(npm!.group).toBe('distribution');
-      expect(npm!.imageUrl).toBe('https://img.shields.io/npm/v/my-lib');
-      expect(npm!.linkUrl).toBe('https://www.npmjs.com/package/my-lib');
+      const npm = expectBadge(badges, 'npm-version');
+      expect(npm.group).toBe('distribution');
+      expect(npm.imageUrl).toBe('https://img.shields.io/npm/v/my-lib');
+      expect(npm.linkUrl).toBe('https://www.npmjs.com/package/my-lib');
     });
 
     it('generates node-version badge when engines.node is present', () => {
@@ -46,9 +56,8 @@ describe('resolver', () => {
         repo: 'my-lib',
       });
       const badges = resolveBadges(meta);
-      const node = badges.find((b) => b.type === 'node-version');
-      expect(node).toBeDefined();
-      expect(node!.group).toBe('runtime');
+      const node = expectBadge(badges, 'node-version');
+      expect(node.group).toBe('runtime');
     });
 
     it('skips npm-version if no package name', () => {
@@ -80,10 +89,9 @@ describe('resolver', () => {
         repo: 'my-tool',
       });
       const badges = resolveBadges(meta);
-      const pypi = badges.find((b) => b.type === 'pypi-version');
-      expect(pypi).toBeDefined();
-      expect(pypi!.imageUrl).toBe('https://img.shields.io/pypi/v/my-tool');
-      expect(pypi!.linkUrl).toBe('https://pypi.org/project/my-tool');
+      const pypi = expectBadge(badges, 'pypi-version');
+      expect(pypi.imageUrl).toBe('https://img.shields.io/pypi/v/my-tool');
+      expect(pypi.linkUrl).toBe('https://pypi.org/project/my-tool');
     });
 
     it('generates python-version badge when requires-python is present', () => {
@@ -95,9 +103,8 @@ describe('resolver', () => {
         repo: 'my-tool',
       });
       const badges = resolveBadges(meta);
-      const py = badges.find((b) => b.type === 'python-version');
-      expect(py).toBeDefined();
-      expect(py!.group).toBe('runtime');
+      const py = expectBadge(badges, 'python-version');
+      expect(py.group).toBe('runtime');
     });
   });
 
@@ -110,10 +117,9 @@ describe('resolver', () => {
         repo: 'my-crate',
       });
       const badges = resolveBadges(meta);
-      const crate = badges.find((b) => b.type === 'crates-version');
-      expect(crate).toBeDefined();
-      expect(crate!.imageUrl).toBe('https://img.shields.io/crates/v/my-crate');
-      expect(crate!.linkUrl).toBe('https://crates.io/crates/my-crate');
+      const crate = expectBadge(badges, 'crates-version');
+      expect(crate.imageUrl).toBe('https://img.shields.io/crates/v/my-crate');
+      expect(crate.linkUrl).toBe('https://crates.io/crates/my-crate');
     });
   });
 
@@ -142,7 +148,10 @@ describe('resolver', () => {
       const badges = resolveBadges(meta);
       const build = badges.find((b) => b.group === 'build');
       expect(build).toBeDefined();
-      expect(build!.imageUrl).toContain('my%20workflow.yml');
+      if (!build) {
+        throw new Error('Expected build badge not found');
+      }
+      expect(build.imageUrl).toContain('my%20workflow.yml');
     });
 
     it('skips workflow badges without owner/repo', () => {
@@ -164,11 +173,10 @@ describe('resolver', () => {
         repo: 'my-lib',
       });
       const badges = resolveBadges(meta);
-      const coverage = badges.find((b) => b.type === 'coverage');
-      expect(coverage).toBeDefined();
-      expect(coverage!.group).toBe('quality');
-      expect(coverage!.imageUrl).toBe('https://codecov.io/gh/user/my-lib/branch/main/graph/badge.svg');
-      expect(coverage!.linkUrl).toBe('https://codecov.io/gh/user/my-lib');
+      const coverage = expectBadge(badges, 'coverage');
+      expect(coverage.group).toBe('quality');
+      expect(coverage.imageUrl).toBe('https://codecov.io/gh/user/my-lib/branch/main/graph/badge.svg');
+      expect(coverage.linkUrl).toBe('https://codecov.io/gh/user/my-lib');
     });
 
     it('generates coverage badge with coveralls service', () => {
@@ -179,11 +187,10 @@ describe('resolver', () => {
         repo: 'my-lib',
       });
       const badges = resolveBadges(meta);
-      const coverage = badges.find((b) => b.type === 'coverage');
-      expect(coverage).toBeDefined();
-      expect(coverage!.group).toBe('quality');
-      expect(coverage!.imageUrl).toBe('https://coveralls.io/repos/github/user/my-lib/badge.svg?branch=main');
-      expect(coverage!.linkUrl).toBe('https://coveralls.io/github/user/my-lib?branch=main');
+      const coverage = expectBadge(badges, 'coverage');
+      expect(coverage.group).toBe('quality');
+      expect(coverage.imageUrl).toBe('https://coveralls.io/repos/github/user/my-lib/badge.svg?branch=main');
+      expect(coverage.linkUrl).toBe('https://coveralls.io/github/user/my-lib?branch=main');
     });
 
     it('generates generic coverage badge when service is null', () => {
@@ -194,11 +201,10 @@ describe('resolver', () => {
         repo: 'my-lib',
       });
       const badges = resolveBadges(meta);
-      const coverage = badges.find((b) => b.type === 'coverage');
-      expect(coverage).toBeDefined();
-      expect(coverage!.group).toBe('quality');
-      expect(coverage!.imageUrl).toBe('https://codecov.io/gh/user/my-lib/branch/main/graph/badge.svg');
-      expect(coverage!.linkUrl).toBe('https://codecov.io/gh/user/my-lib');
+      const coverage = expectBadge(badges, 'coverage');
+      expect(coverage.group).toBe('quality');
+      expect(coverage.imageUrl).toBe('https://codecov.io/gh/user/my-lib/branch/main/graph/badge.svg');
+      expect(coverage.linkUrl).toBe('https://codecov.io/gh/user/my-lib');
     });
 
     it('skips coverage badge when hasCoverage is false', () => {
@@ -231,9 +237,8 @@ describe('resolver', () => {
         repo: 'my-lib',
       });
       const badges = resolveBadges(meta);
-      const lic = badges.find((b) => b.type === 'license');
-      expect(lic).toBeDefined();
-      expect(lic!.group).toBe('metadata');
+      const lic = expectBadge(badges, 'license');
+      expect(lic.group).toBe('metadata');
     });
 
     it('skips license badge without owner/repo', () => {
@@ -254,9 +259,8 @@ describe('resolver', () => {
         repo: 'my-lib',
       });
       const badges = resolveBadges(meta);
-      const stars = badges.find((b) => b.type === 'stars');
-      expect(stars).toBeDefined();
-      expect(stars!.group).toBe('social');
+      const stars = expectBadge(badges, 'stars');
+      expect(stars.group).toBe('social');
     });
 
     it('skips stars badge without owner/repo', () => {

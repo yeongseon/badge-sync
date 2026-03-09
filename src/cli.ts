@@ -1,6 +1,8 @@
+import { resolve } from 'node:path';
 import { Command } from 'commander';
+import { applyBadges, checkBadges, doctorBadges, initBadges, listBadges, repairBadges } from './applier.js';
 import { loadConfig } from './config.js';
-import { applyBadges, checkBadges, doctorBadges, repairBadges } from './applier.js';
+import { detectMetadata } from './detector.js';
 
 /**
  * Create and configure the CLI program.
@@ -18,22 +20,23 @@ export function createProgram(): Command {
     .description('Generate and apply badges to the README')
     .option('--readme <path>', 'README file path')
     .option('--config <path>', 'Config file path')
+    .option('--package <name>', 'Target a specific monorepo package')
     .option('--dry-run', 'Print changes without writing', false)
-    .action(async (opts: { readme?: string; config?: string; dryRun?: boolean }) => {
+    .action(async (opts: { readme?: string; config?: string; package?: string; dryRun?: boolean }) => {
       const cwd = process.cwd();
       const config = await loadConfig(cwd, opts.config);
       if (opts.readme) config.readme = opts.readme;
+      const packageDir = await resolvePackageDir(cwd, opts.package);
 
-      const result = await applyBadges(cwd, config, { dryRun: opts.dryRun });
+      const result = await applyBadges(cwd, config, { dryRun: opts.dryRun }, packageDir);
 
       if (opts.dryRun) {
         const { formatBadges } = await import('./formatter.js');
         const { resolveBadges } = await import('./resolver.js');
-        const { detectMetadata } = await import('./detector.js');
-        const metadata = await detectMetadata(cwd);
+        const metadata = await detectMetadata(packageDir ? resolve(cwd, packageDir) : cwd);
         const badges = resolveBadges(metadata);
         const formatted = formatBadges(badges, config);
-        process.stdout.write(formatted + '\n');
+        process.stdout.write(`${formatted}\n`);
         return;
       }
 
@@ -53,12 +56,14 @@ export function createProgram(): Command {
     .description('Validate badge configuration and ordering')
     .option('--readme <path>', 'README file path')
     .option('--config <path>', 'Config file path')
-    .action(async (opts: { readme?: string; config?: string }) => {
+    .option('--package <name>', 'Target a specific monorepo package')
+    .action(async (opts: { readme?: string; config?: string; package?: string }) => {
       const cwd = process.cwd();
       const config = await loadConfig(cwd, opts.config);
       if (opts.readme) config.readme = opts.readme;
+      const packageDir = await resolvePackageDir(cwd, opts.package);
 
-      const result = await checkBadges(cwd, config);
+      const result = await checkBadges(cwd, config, packageDir);
 
       if (result.inSync) {
         process.stdout.write('Badges are in sync\n');
@@ -67,9 +72,9 @@ export function createProgram(): Command {
 
       process.stdout.write('Badges are out of sync\n\n');
       process.stdout.write('Expected:\n');
-      process.stdout.write(result.expected + '\n\n');
+      process.stdout.write(`${result.expected}\n\n`);
       process.stdout.write('Current:\n');
-      process.stdout.write(result.current + '\n');
+      process.stdout.write(`${result.current}\n`);
       process.exit(1);
     });
 
@@ -139,5 +144,78 @@ export function createProgram(): Command {
       }
     });
 
+  program
+    .command('list')
+    .description('List detected badges and monorepo packages')
+    .option('--readme <path>', 'README file path')
+    .option('--config <path>', 'Config file path')
+    .action(async (opts: { readme?: string; config?: string }) => {
+      const cwd = process.cwd();
+      const config = await loadConfig(cwd, opts.config);
+      if (opts.readme) config.readme = opts.readme;
+
+      const result = await listBadges(cwd, config);
+
+      if (result.isMonorepo) {
+        process.stdout.write('Monorepo packages:\n');
+        for (const pkg of result.packages) {
+          process.stdout.write(`  - ${pkg.name} (${pkg.ecosystem}) at ${pkg.path}\n`);
+        }
+      } else {
+        process.stdout.write('Monorepo packages: none\n');
+      }
+
+      process.stdout.write('Detected badges:\n');
+      for (const badge of result.badges) {
+        process.stdout.write(`  - [${badge.group}] ${badge.label}\n`);
+      }
+    });
+
+  program
+    .command('init')
+    .description('Initialize badge-sync in your project')
+    .option('--readme <path>', 'README file path')
+    .option('--config <path>', 'Config file path')
+    .option('--markers-only', 'Only insert badge markers without applying badges', false)
+    .action(async (opts: { readme?: string; config?: string; markersOnly?: boolean }) => {
+      const cwd = process.cwd();
+      const config = await loadConfig(cwd, opts.config);
+      if (opts.readme) config.readme = opts.readme;
+
+      const result = await initBadges(cwd, config, { markersOnly: opts.markersOnly });
+
+      if (result.markersAlreadyExist) {
+        process.stdout.write('Badge markers already exist in README\n');
+        process.stdout.write('Run `badge-sync apply` to update badges\n');
+        return;
+      }
+
+      if (result.readmeCreated) {
+        process.stdout.write(`Created ${config.readme}\n`);
+      }
+
+      process.stdout.write('Inserted badge markers\n');
+
+      if (result.badgesApplied > 0) {
+        process.stdout.write(`Applied ${result.badgesApplied} badges\n`);
+        for (const badge of result.badges) {
+          process.stdout.write(`  [${badge.group}] ${badge.label}\n`);
+        }
+      }
+    });
+
   return program;
+}
+
+async function resolvePackageDir(cwd: string, packageName?: string): Promise<string | undefined> {
+  if (!packageName) return undefined;
+
+  const metadata = await detectMetadata(cwd);
+  const target = metadata.packages.find((pkg) => pkg.name === packageName);
+
+  if (!target) {
+    throw new Error(`Monorepo package not found: ${packageName}`);
+  }
+
+  return target.path;
 }

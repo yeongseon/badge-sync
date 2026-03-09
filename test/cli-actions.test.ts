@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import type { Config, Badge, ValidationResult } from '../src/types.js';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { Badge, Config, ValidationResult } from '../src/types.js';
 
 // Mock all dependencies BEFORE importing cli
 vi.mock('../src/config.js', () => ({
@@ -10,6 +10,8 @@ vi.mock('../src/applier.js', () => ({
   checkBadges: vi.fn(),
   doctorBadges: vi.fn(),
   repairBadges: vi.fn(),
+  listBadges: vi.fn(),
+  initBadges: vi.fn(),
 }));
 vi.mock('../src/formatter.js', () => ({
   formatBadges: vi.fn(),
@@ -23,7 +25,7 @@ vi.mock('../src/detector.js', () => ({
 
 const { createProgram } = await import('../src/cli.js');
 const { loadConfig } = await import('../src/config.js');
-const { applyBadges, checkBadges, doctorBadges, repairBadges } = await import('../src/applier.js');
+const { applyBadges, checkBadges, doctorBadges, repairBadges, listBadges, initBadges } = await import('../src/applier.js');
 const { formatBadges } = await import('../src/formatter.js');
 const { resolveBadges } = await import('../src/resolver.js');
 const { detectMetadata } = await import('../src/detector.js');
@@ -33,6 +35,8 @@ const mockApplyBadges = vi.mocked(applyBadges);
 const mockCheckBadges = vi.mocked(checkBadges);
 const mockDoctorBadges = vi.mocked(doctorBadges);
 const mockRepairBadges = vi.mocked(repairBadges);
+const mockListBadges = vi.mocked(listBadges);
+const mockInitBadges = vi.mocked(initBadges);
 const mockFormatBadges = vi.mocked(formatBadges);
 const mockResolveBadges = vi.mocked(resolveBadges);
 const mockDetectMetadata = vi.mocked(detectMetadata);
@@ -57,6 +61,7 @@ describe('cli action handlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockLoadConfig.mockResolvedValue({ ...defaultConfig });
+    mockListBadges.mockResolvedValue({ isMonorepo: false, packages: [], badges: [] });
     writeSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
     exitSpy = vi.spyOn(process, 'exit').mockImplementation((() => {
       throw new Error('process.exit called');
@@ -108,6 +113,8 @@ describe('cli action handlers', () => {
         ecosystem: ['javascript'],
         packageName: 'test',
         packageNames: { javascript: 'test' },
+        isMonorepo: false,
+        packages: [],
         coverageService: null,
         hasCoverage: false,
         repositoryUrl: null,
@@ -168,6 +175,59 @@ describe('cli action handlers', () => {
 
       expect(writeSpy).toHaveBeenCalledWith('Badges are out of sync\n\n');
       expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
+    it('passes --package option to checkBadges', async () => {
+      mockCheckBadges.mockResolvedValue({
+        inSync: true,
+        expected: 'badges',
+        current: 'badges',
+      });
+      mockDetectMetadata.mockResolvedValue({
+        ecosystem: ['javascript'],
+        packageName: 'root',
+        packageNames: { javascript: 'root' },
+        isMonorepo: true,
+        packages: [{ name: 'pkg-a', path: 'packages/pkg-a', ecosystem: 'javascript' }],
+        coverageService: null,
+        hasCoverage: false,
+        repositoryUrl: null,
+        owner: null,
+        repo: null,
+        license: null,
+        workflows: [],
+        nodeVersion: null,
+        pythonVersion: null,
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'check', '--package', 'pkg-a']);
+      } catch (error: unknown) {
+        void error;
+      }
+
+      expect(mockCheckBadges).toHaveBeenCalledWith(expect.any(String), expect.any(Object), 'packages/pkg-a');
+    });
+  });
+
+  describe('list command', () => {
+    it('prints monorepo package and badge lists', async () => {
+      mockListBadges.mockResolvedValue({
+        isMonorepo: true,
+        packages: [{ name: 'pkg-a', path: 'packages/pkg-a', ecosystem: 'javascript' }],
+        badges: [testBadge],
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+      await program.parseAsync(['node', 'badge-sync', 'list']);
+
+      expect(writeSpy).toHaveBeenCalledWith('Monorepo packages:\n');
+      expect(writeSpy).toHaveBeenCalledWith('Detected badges:\n');
+      expect(mockListBadges).toHaveBeenCalled();
     });
   });
 
@@ -326,6 +386,60 @@ describe('cli action handlers', () => {
     });
   });
 
+  describe('init command', () => {
+    it('reports marker insertion and applied badges', async () => {
+      mockInitBadges.mockResolvedValue({
+        readmeCreated: true,
+        markersInserted: true,
+        markersAlreadyExist: false,
+        badgesApplied: 1,
+        badges: [testBadge],
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+      await program.parseAsync(['node', 'badge-sync', 'init']);
+
+      expect(writeSpy).toHaveBeenCalledWith('Created README.md\n');
+      expect(writeSpy).toHaveBeenCalledWith('Inserted badge markers\n');
+      expect(writeSpy).toHaveBeenCalledWith('Applied 1 badges\n');
+    });
+
+    it('reports when markers already exist', async () => {
+      mockInitBadges.mockResolvedValue({
+        readmeCreated: false,
+        markersInserted: false,
+        markersAlreadyExist: true,
+        badgesApplied: 0,
+        badges: [],
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+      await program.parseAsync(['node', 'badge-sync', 'init']);
+
+      expect(writeSpy).toHaveBeenCalledWith('Badge markers already exist in README\n');
+      expect(writeSpy).toHaveBeenCalledWith('Run `badge-sync apply` to update badges\n');
+    });
+
+    it('passes --markers-only option to initBadges', async () => {
+      mockInitBadges.mockResolvedValue({
+        readmeCreated: false,
+        markersInserted: true,
+        markersAlreadyExist: false,
+        badgesApplied: 0,
+        badges: [],
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+      await program.parseAsync(['node', 'badge-sync', 'init', '--markers-only']);
+
+      const calledOptions = mockInitBadges.mock.calls[0][2] as { markersOnly?: boolean };
+      expect(calledOptions.markersOnly).toBe(true);
+    });
+  });
+
   describe('option passthrough', () => {
     it('passes --readme option to config for apply', async () => {
       mockApplyBadges.mockResolvedValue({
@@ -340,6 +454,41 @@ describe('cli action handlers', () => {
 
       const calledConfig = mockApplyBadges.mock.calls[0][1] as Config;
       expect(calledConfig.readme).toBe('CUSTOM.md');
+    });
+
+    it('passes --package option to applyBadges', async () => {
+      mockApplyBadges.mockResolvedValue({
+        applied: 1,
+        badges: [testBadge],
+        changed: false,
+      });
+      mockDetectMetadata.mockResolvedValue({
+        ecosystem: ['javascript'],
+        packageName: 'root',
+        packageNames: { javascript: 'root' },
+        isMonorepo: true,
+        packages: [{ name: 'pkg-a', path: 'packages/pkg-a', ecosystem: 'javascript' }],
+        coverageService: null,
+        hasCoverage: false,
+        repositoryUrl: null,
+        owner: null,
+        repo: null,
+        license: null,
+        workflows: [],
+        nodeVersion: null,
+        pythonVersion: null,
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+      await program.parseAsync(['node', 'badge-sync', 'apply', '--package', 'pkg-a']);
+
+      expect(mockApplyBadges).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Object),
+        expect.objectContaining({ dryRun: false }),
+        'packages/pkg-a',
+      );
     });
 
     it('passes --config option to loadConfig for apply', async () => {
@@ -426,6 +575,23 @@ describe('cli action handlers', () => {
 
       const calledOptions = mockRepairBadges.mock.calls[0][2] as { dryRun?: boolean; timeout: number };
       expect(calledOptions.timeout).toBe(7000);
+    });
+
+    it('passes --readme option to config for init', async () => {
+      mockInitBadges.mockResolvedValue({
+        readmeCreated: false,
+        markersInserted: true,
+        markersAlreadyExist: false,
+        badgesApplied: 0,
+        badges: [],
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+      await program.parseAsync(['node', 'badge-sync', 'init', '--readme', 'CUSTOM.md']);
+
+      const calledConfig = mockInitBadges.mock.calls[0][1] as Config;
+      expect(calledConfig.readme).toBe('CUSTOM.md');
     });
   });
 });
