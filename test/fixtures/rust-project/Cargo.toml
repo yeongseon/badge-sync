@@ -1,0 +1,8 @@
+[package]
+name = "my-rust-crate"
+version = "0.1.0"
+edition = "2021"
+description = "A Rust library"
+
+[dependencies]
+serde = "1.0"

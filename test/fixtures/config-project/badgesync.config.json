@@ -1,0 +1,6 @@
+{
+  "badges": {
+    "order": ["build", "distribution", "metadata", "social"],
+    "exclude": ["stars"]
+  }
+}

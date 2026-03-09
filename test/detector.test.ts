@@ -1,0 +1,303 @@
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { resolve } from 'node:path';
+import { mkdirSync, writeFileSync, rmSync, existsSync, cpSync } from 'node:fs';
+import { detectMetadata } from '../src/detector.js';
+
+const FIXTURES = resolve(import.meta.dirname, 'fixtures');
+
+beforeEach(() => {
+  if (existsSync(TMP_DETECTOR)) rmSync(TMP_DETECTOR, { recursive: true });
+  mkdirSync(TMP_DETECTOR, { recursive: true });
+});
+
+afterEach(() => {
+  if (existsSync(TMP_DETECTOR)) rmSync(TMP_DETECTOR, { recursive: true });
+});
+const TMP_DETECTOR = resolve(import.meta.dirname, '.tmp-detector');
+
+function copyFixture(name: string): string {
+  const src = resolve(FIXTURES, name);
+  const dest = resolve(TMP_DETECTOR, name);
+  cpSync(src, dest, { recursive: true });
+  return dest;
+}
+
+
+describe('detector', () => {
+  describe('JavaScript/TypeScript project', () => {
+    const cwd = resolve(FIXTURES, 'javascript-project');
+
+    it('detects javascript ecosystem', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.ecosystem).toContain('javascript');
+    });
+
+    it('extracts package name from package.json', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.packageName).toBe('my-awesome-lib');
+    });
+
+    it('extracts node version from engines field', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.nodeVersion).toBe('>=18');
+    });
+
+    it('extracts repository URL from package.json', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.repositoryUrl).toBe('https://github.com/testuser/my-awesome-lib.git');
+    });
+
+    it('parses owner and repo from repository URL', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.owner).toBe('testuser');
+      expect(meta.repo).toBe('my-awesome-lib');
+    });
+
+    it('detects MIT license', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.license).toBe('MIT');
+    });
+
+    it('detects workflow files', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.workflows).toContain('ci.yml');
+    });
+
+    it('does not detect python or rust', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.ecosystem).not.toContain('python');
+      expect(meta.ecosystem).not.toContain('rust');
+      expect(meta.pythonVersion).toBeNull();
+    });
+  });
+
+  describe('Python project', () => {
+    const cwd = resolve(FIXTURES, 'python-project');
+
+    it('detects python ecosystem', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.ecosystem).toContain('python');
+    });
+
+    it('extracts package name from pyproject.toml', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.packageName).toBe('my-python-tool');
+    });
+
+    it('extracts python version requirement', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.pythonVersion).toBe('>=3.9');
+    });
+
+    it('detects Apache-2.0 license', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.license).toBe('Apache-2.0');
+    });
+
+    it('detects multiple workflow files', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.workflows).toHaveLength(2);
+      expect(meta.workflows).toContain('lint.yml');
+      expect(meta.workflows).toContain('test.yml');
+    });
+  });
+
+  describe('Rust project', () => {
+    const cwd = resolve(FIXTURES, 'rust-project');
+
+    it('detects rust ecosystem', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.ecosystem).toContain('rust');
+    });
+
+    it('extracts package name from Cargo.toml', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.packageName).toBe('my-rust-crate');
+    });
+
+    it('detects workflow files', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.workflows).toContain('rust-ci.yml');
+    });
+
+    it('detects MIT license', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.license).toBe('MIT');
+    });
+  });
+
+  describe('Multi-ecosystem project', () => {
+    const cwd = resolve(FIXTURES, 'multi-ecosystem');
+
+    it('detects both javascript and python ecosystems', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.ecosystem).toContain('javascript');
+      expect(meta.ecosystem).toContain('python');
+    });
+
+    it('uses first detected package name (javascript)', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.packageName).toBe('fullstack-app');
+    });
+
+    it('extracts node version', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.nodeVersion).toBe('>=20');
+    });
+
+    it('extracts python version', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.pythonVersion).toBe('>=3.11');
+    });
+  });
+
+  describe('Minimal project (no ecosystem files)', () => {
+    const cwd = resolve(FIXTURES, 'minimal-project');
+
+    it('returns empty ecosystem list', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.ecosystem).toHaveLength(0);
+    });
+
+    it('returns null for all metadata fields', async () => {
+      const meta = await detectMetadata(cwd);
+      expect(meta.packageName).toBeNull();
+      expect(meta.license).toBeNull();
+      expect(meta.nodeVersion).toBeNull();
+      expect(meta.pythonVersion).toBeNull();
+      expect(meta.workflows).toHaveLength(0);
+    });
+  });
+
+  describe('Edge cases', () => {
+    it('extracts repository URL from package.json string format', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'string-repo');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(
+        resolve(cwd, 'package.json'),
+        JSON.stringify({
+          name: 'string-repo-pkg',
+          repository: 'https://github.com/owner/string-repo',
+        }),
+      );
+      const meta = await detectMetadata(cwd);
+      expect(meta.repositoryUrl).toBe('https://github.com/owner/string-repo');
+      expect(meta.owner).toBe('owner');
+      expect(meta.repo).toBe('string-repo');
+    });
+
+    it('handles invalid JSON in package.json gracefully', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'invalid-json');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, 'package.json'), '{ invalid json !!!');
+      const meta = await detectMetadata(cwd);
+      // Ecosystem is detected (file exists) but no metadata extracted
+      expect(meta.ecosystem).toContain('javascript');
+      expect(meta.packageName).toBeNull();
+    });
+
+    it('parses owner and repo from SSH git remote', async () => {
+      const cwd = copyFixture('javascript-project');
+      const { execSync } = await import('node:child_process');
+      execSync('git init', { cwd, stdio: 'pipe' });
+      execSync('git remote add origin git@github.com:sshowner/ssh-repo.git', { cwd, stdio: 'pipe' });
+      const meta = await detectMetadata(cwd);
+      expect(meta.owner).toBe('sshowner');
+      expect(meta.repo).toBe('ssh-repo');
+    });
+
+    it('populates packageNames per ecosystem', async () => {
+      const cwd = resolve(FIXTURES, 'multi-ecosystem');
+      const meta = await detectMetadata(cwd);
+      expect(meta.packageNames.javascript).toBe('fullstack-app');
+      expect(meta.packageNames.python).toBe('fullstack-backend');
+    });
+
+    it('falls back to python packageName when no JS package', async () => {
+      const cwd = resolve(FIXTURES, 'python-project');
+      const meta = await detectMetadata(cwd);
+      expect(meta.packageName).toBe('my-python-tool');
+      expect(meta.packageNames.python).toBe('my-python-tool');
+    });
+
+    it('populates rust packageNames', async () => {
+      const cwd = resolve(FIXTURES, 'rust-project');
+      const meta = await detectMetadata(cwd);
+      expect(meta.packageNames.rust).toBe('my-rust-crate');
+    });
+  });
+
+  describe('license type detection', () => {
+    it('detects GPL-3.0 license', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'gpl3-project');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, 'package.json'), JSON.stringify({ name: 'gpl3-pkg' }));
+      writeFileSync(resolve(cwd, 'LICENSE'), 'GNU GENERAL PUBLIC LICENSE\nVersion 3, 29 June 2007\n');
+      const meta = await detectMetadata(cwd);
+      expect(meta.license).toBe('GPL-3.0');
+    });
+
+    it('detects GPL-2.0 license', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'gpl2-project');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, 'package.json'), JSON.stringify({ name: 'gpl2-pkg' }));
+      writeFileSync(resolve(cwd, 'LICENSE'), 'GNU GENERAL PUBLIC LICENSE\nVersion 2, June 1991\n');
+      const meta = await detectMetadata(cwd);
+      expect(meta.license).toBe('GPL-2.0');
+    });
+
+    it('detects BSD-3-Clause license', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'bsd3-project');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, 'package.json'), JSON.stringify({ name: 'bsd3-pkg' }));
+      writeFileSync(resolve(cwd, 'LICENSE'), 'BSD 3-Clause License\nRedistribution and use in source and binary forms...');
+      const meta = await detectMetadata(cwd);
+      expect(meta.license).toBe('BSD-3-Clause');
+    });
+
+    it('detects BSD-2-Clause license', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'bsd2-project');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, 'package.json'), JSON.stringify({ name: 'bsd2-pkg' }));
+      writeFileSync(resolve(cwd, 'LICENSE'), 'BSD 2-Clause License\nSimplified...');
+      const meta = await detectMetadata(cwd);
+      expect(meta.license).toBe('BSD-2-Clause');
+    });
+
+    it('detects ISC license', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'isc-project');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, 'package.json'), JSON.stringify({ name: 'isc-pkg' }));
+      writeFileSync(resolve(cwd, 'LICENSE'), 'ISC License\nCopyright (c) 2024...');
+      const meta = await detectMetadata(cwd);
+      expect(meta.license).toBe('ISC');
+    });
+
+    it('detects MPL-2.0 license', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'mpl-project');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, 'package.json'), JSON.stringify({ name: 'mpl-pkg' }));
+      writeFileSync(resolve(cwd, 'LICENSE'), 'Mozilla Public License Version 2.0\n');
+      const meta = await detectMetadata(cwd);
+      expect(meta.license).toBe('MPL-2.0');
+    });
+
+    it('detects Unlicense', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'unlicense-project');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, 'package.json'), JSON.stringify({ name: 'unlicense-pkg' }));
+      writeFileSync(resolve(cwd, 'LICENSE'), 'This is free and unencumbered software released into the public domain.\nThe Unlicense');
+      const meta = await detectMetadata(cwd);
+      expect(meta.license).toBe('Unlicense');
+    });
+
+    it('returns null for unrecognized license', async () => {
+      const cwd = resolve(TMP_DETECTOR, 'unknown-license');
+      mkdirSync(cwd, { recursive: true });
+      writeFileSync(resolve(cwd, 'package.json'), JSON.stringify({ name: 'unknown-pkg' }));
+      writeFileSync(resolve(cwd, 'LICENSE'), 'Some custom proprietary license terms...');
+      const meta = await detectMetadata(cwd);
+      expect(meta.license).toBeNull();
+    });
+  });
+});
