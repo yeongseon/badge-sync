@@ -536,6 +536,54 @@ describe("applier", () => {
 			expect(readme).not.toContain("img.shields.io/npm/v/my-awesome-lib");
 		});
 
+		it("migrates existing markdown badges into markers during init", async () => {
+			const cwd = resolve(TMP, "init-migration-markdown");
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(
+				resolve(cwd, "README.md"),
+				"# My Project\n\n[![badge](https://example.com/badge.svg)](https://example.com)\n\nSome content\n",
+				"utf-8",
+			);
+
+			await initBadges(cwd, makeConfig(), { markersOnly: true });
+
+			const readme = readFileSync(resolve(cwd, "README.md"), "utf-8");
+			expect(readme).toContain("<!-- BADGES:START -->");
+			expect(readme).toContain("<!-- BADGES:END -->");
+			const startIdx = readme.indexOf("<!-- BADGES:START -->");
+			const endIdx = readme.indexOf("<!-- BADGES:END -->");
+			const badgeIdx = readme.indexOf(
+				"[![badge](https://example.com/badge.svg)](https://example.com)",
+			);
+			expect(badgeIdx).toBeGreaterThan(startIdx);
+			expect(badgeIdx).toBeLessThan(endIdx);
+			const afterEnd = readme.slice(endIdx);
+			expect(afterEnd).not.toContain("[![badge]");
+		});
+
+		it("migrates existing HTML badges into markers during init", async () => {
+			const cwd = resolve(TMP, "init-migration-html");
+			mkdirSync(cwd, { recursive: true });
+			const htmlBadge =
+				'<a href="https://example.com"><img src="https://example.com/badge.svg" alt="badge" /></a>';
+			writeFileSync(
+				resolve(cwd, "README.md"),
+				`# My Project\n\n${htmlBadge}\n\nSome content\n`,
+				"utf-8",
+			);
+
+			await initBadges(cwd, makeConfig(), { markersOnly: true });
+
+			const readme = readFileSync(resolve(cwd, "README.md"), "utf-8");
+			const startIdx = readme.indexOf("<!-- BADGES:START -->");
+			const endIdx = readme.indexOf("<!-- BADGES:END -->");
+			const badgeIdx = readme.indexOf(htmlBadge);
+			expect(badgeIdx).toBeGreaterThan(startIdx);
+			expect(badgeIdx).toBeLessThan(endIdx);
+			const afterEnd = readme.slice(endIdx);
+			expect(afterEnd).not.toContain("https://example.com/badge.svg");
+		});
+
 		it("creates README when missing", async () => {
 			const cwd = resolve(TMP, "brand-new-project");
 			mkdirSync(cwd, { recursive: true });

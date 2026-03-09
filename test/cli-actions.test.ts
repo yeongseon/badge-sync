@@ -19,6 +19,10 @@ vi.mock('../src/formatter.js', () => ({
 vi.mock('../src/resolver.js', () => ({
   resolveBadges: vi.fn(),
 }));
+vi.mock('../src/readme.js', () => ({
+  readBadgeBlock: vi.fn(),
+  parseExistingBadges: vi.fn(),
+}));
 vi.mock('../src/detector.js', () => ({
   detectMetadata: vi.fn(),
 }));
@@ -26,8 +30,8 @@ vi.mock('../src/detector.js', () => ({
 const { createProgram } = await import('../src/cli.js');
 const { loadConfig } = await import('../src/config.js');
 const { applyBadges, checkBadges, doctorBadges, repairBadges, listBadges, initBadges } = await import('../src/applier.js');
-const { formatBadges } = await import('../src/formatter.js');
 const { resolveBadges } = await import('../src/resolver.js');
+const { readBadgeBlock, parseExistingBadges } = await import('../src/readme.js');
 const { detectMetadata } = await import('../src/detector.js');
 
 const mockLoadConfig = vi.mocked(loadConfig);
@@ -37,8 +41,9 @@ const mockDoctorBadges = vi.mocked(doctorBadges);
 const mockRepairBadges = vi.mocked(repairBadges);
 const mockListBadges = vi.mocked(listBadges);
 const mockInitBadges = vi.mocked(initBadges);
-const mockFormatBadges = vi.mocked(formatBadges);
 const mockResolveBadges = vi.mocked(resolveBadges);
+const mockReadBadgeBlock = vi.mocked(readBadgeBlock);
+const mockParseExistingBadges = vi.mocked(parseExistingBadges);
 const mockDetectMetadata = vi.mocked(detectMetadata);
 
 const defaultConfig: Config = {
@@ -103,7 +108,90 @@ describe('cli action handlers', () => {
       expect(writeSpy).toHaveBeenCalledWith('Badges are up to date\n');
     });
 
-    it('prints formatted badges in dry-run mode', async () => {
+    it('dry-run shows categorized output', async () => {
+      mockApplyBadges.mockResolvedValue({
+        applied: 1,
+        badges: [testBadge],
+        changed: true,
+      });
+      mockDetectMetadata.mockResolvedValue({
+        ecosystem: ['javascript'],
+        packageName: 'test',
+        packageNames: { javascript: 'test' },
+        isMonorepo: false,
+        packages: [],
+        coverageService: null,
+        hasCoverage: false,
+        repositoryUrl: null,
+        owner: null,
+        repo: null,
+        license: null,
+        workflows: [],
+        nodeVersion: null,
+        pythonVersion: null,
+      });
+      const changedBadge: Badge = {
+        ...testBadge,
+        group: 'build',
+        label: 'ci workflow',
+        type: 'ci-workflow',
+        imageUrl: 'https://github.com/acme/repo/actions/workflows/ci.yml/badge.svg',
+        linkUrl: 'https://github.com/acme/repo/actions/workflows/ci.yml',
+      };
+      const unchangedBadge: Badge = {
+        ...testBadge,
+        group: 'quality',
+        label: 'coverage',
+        type: 'coverage',
+        imageUrl: 'https://codecov.io/gh/acme/repo/branch/main/graph/badge.svg',
+        linkUrl: 'https://codecov.io/gh/acme/repo',
+      };
+      const newBadge: Badge = {
+        ...testBadge,
+        group: 'metadata',
+        label: 'license',
+        type: 'license',
+        imageUrl: 'https://img.shields.io/github/license/acme/repo',
+        linkUrl: 'https://github.com/acme/repo/blob/main/LICENSE',
+      };
+
+      mockResolveBadges.mockReturnValue([changedBadge, unchangedBadge, newBadge]);
+      mockReadBadgeBlock.mockResolvedValue('existing badges');
+      mockParseExistingBadges.mockReturnValue([
+        {
+          label: 'ci old workflow',
+          imageUrl: changedBadge.imageUrl,
+          linkUrl: 'https://github.com/acme/repo/actions/workflows/old-ci.yml',
+          raw: '[![ci old workflow](https://github.com/acme/repo/actions/workflows/ci.yml/badge.svg)](https://github.com/acme/repo/actions/workflows/old-ci.yml)',
+        },
+        {
+          label: unchangedBadge.label,
+          imageUrl: unchangedBadge.imageUrl,
+          linkUrl: unchangedBadge.linkUrl,
+          raw: '[![coverage](https://codecov.io/gh/acme/repo/branch/main/graph/badge.svg)](https://codecov.io/gh/acme/repo)',
+        },
+        {
+          label: 'pre-commit',
+          imageUrl: 'https://img.shields.io/badge/pre--commit-enabled-brightgreen',
+          linkUrl: 'https://pre-commit.com',
+          raw: '[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen)](https://pre-commit.com)',
+        },
+      ]);
+
+      const program = createProgram();
+      program.exitOverride();
+      await program.parseAsync(['node', 'badge-sync', 'apply', '--dry-run']);
+
+      expect(writeSpy).toHaveBeenCalledWith('Dry run - no changes written\n\n');
+      expect(writeSpy).toHaveBeenCalledWith('Would apply 3 badge(s) (1 new, 1 updated, 1 unchanged):\n');
+      expect(writeSpy).toHaveBeenCalledWith('  ~ [build] ci workflow\n');
+      expect(writeSpy).toHaveBeenCalledWith('  = [quality] coverage\n');
+      expect(writeSpy).toHaveBeenCalledWith('  + [metadata] license\n');
+      expect(writeSpy).toHaveBeenCalledWith('\n1 custom badge(s) preserved:\n');
+      expect(writeSpy).toHaveBeenCalledWith('  = [custom] pre-commit\n');
+    });
+
+    it('dry-run handles readBadgeBlock error with non-Error object', async () => {
       mockApplyBadges.mockResolvedValue({
         applied: 1,
         badges: [testBadge],
@@ -126,14 +214,55 @@ describe('cli action handlers', () => {
         pythonVersion: null,
       });
       mockResolveBadges.mockReturnValue([testBadge]);
-      mockFormatBadges.mockReturnValue('formatted badge output');
+      mockReadBadgeBlock.mockRejectedValue('not an error object');
+      mockParseExistingBadges.mockReturnValue([]);
 
       const program = createProgram();
       program.exitOverride();
-      await program.parseAsync(['node', 'badge-sync', 'apply', '--dry-run']);
 
-      expect(writeSpy).toHaveBeenCalledWith('formatted badge output\n');
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'apply', '--dry-run']);
+        expect.fail('should have thrown');
+      } catch (error: unknown) {
+        expect(error).toBe('not an error object');
+      }
     });
+
+    it('dry-run rethrows readBadgeBlock errors that are not marker or ENOENT', async () => {
+      mockApplyBadges.mockResolvedValue({
+        applied: 1,
+        badges: [testBadge],
+        changed: true,
+      });
+      mockDetectMetadata.mockResolvedValue({
+        ecosystem: ['javascript'],
+        packageName: 'test',
+        packageNames: { javascript: 'test' },
+        isMonorepo: false,
+        packages: [],
+        coverageService: null,
+        hasCoverage: false,
+        repositoryUrl: null,
+        owner: null,
+        repo: null,
+        license: null,
+        workflows: [],
+        nodeVersion: null,
+        pythonVersion: null,
+      });
+      const testError = new Error('Some other read error');
+      mockReadBadgeBlock.mockRejectedValue(testError);
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'apply', '--dry-run']);
+        expect.fail('should have thrown');
+      } catch (error: unknown) {
+        expect(error).toBe(testError);
+      }
+    })
   });
 
   describe('check command', () => {
@@ -174,6 +303,7 @@ describe('cli action handlers', () => {
       }
 
       expect(writeSpy).toHaveBeenCalledWith('Badges are out of sync\n\n');
+      expect(writeSpy).toHaveBeenCalledWith('Detected 1 difference(s)\n\n');
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
@@ -226,6 +356,22 @@ describe('cli action handlers', () => {
       await program.parseAsync(['node', 'badge-sync', 'list']);
 
       expect(writeSpy).toHaveBeenCalledWith('Monorepo packages:\n');
+      expect(writeSpy).toHaveBeenCalledWith('Detected badges:\n');
+      expect(mockListBadges).toHaveBeenCalled();
+    });
+
+    it('prints "none" for non-monorepo packages', async () => {
+      mockListBadges.mockResolvedValue({
+        isMonorepo: false,
+        packages: [],
+        badges: [testBadge],
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+      await program.parseAsync(['node', 'badge-sync', 'list']);
+
+      expect(writeSpy).toHaveBeenCalledWith('Monorepo packages: none\n');
       expect(writeSpy).toHaveBeenCalledWith('Detected badges:\n');
       expect(mockListBadges).toHaveBeenCalled();
     });
@@ -489,6 +635,37 @@ describe('cli action handlers', () => {
         expect.objectContaining({ dryRun: false }),
         'packages/pkg-a',
       );
+    });
+
+    it('throws error when --package name not found in monorepo', async () => {
+      mockDetectMetadata.mockResolvedValue({
+        ecosystem: ['javascript'],
+        packageName: 'root',
+        packageNames: { javascript: 'root' },
+        isMonorepo: true,
+        packages: [{ name: 'pkg-a', path: 'packages/pkg-a', ecosystem: 'javascript' }],
+        coverageService: null,
+        hasCoverage: false,
+        repositoryUrl: null,
+        owner: null,
+        repo: null,
+        license: null,
+        workflows: [],
+        nodeVersion: null,
+        pythonVersion: null,
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'apply', '--package', 'nonexistent']);
+        expect.fail('should have thrown');
+      } catch (error: unknown) {
+        if (error instanceof Error) {
+          expect(error.message).toContain('Monorepo package not found: nonexistent');
+        }
+      }
     });
 
     it('passes --config option to loadConfig for apply', async () => {

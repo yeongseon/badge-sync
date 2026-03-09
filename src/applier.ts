@@ -316,15 +316,92 @@ export async function initBadges(
 function insertBadgeMarkers(readmeContent: string): string {
 	const lines = readmeContent.split(/\r?\n/);
 	const headingIndex = lines.findIndex((line) => line.startsWith("# "));
-	const markerLines = [START_MARKER, END_MARKER];
+	const searchStart = headingIndex >= 0 ? headingIndex + 1 : 0;
+	const { badgeLines, nonBadgeLines } = extractExistingBadgeLines(
+		lines,
+		searchStart,
+	);
+	const markerLines =
+		badgeLines.length > 0
+			? [START_MARKER, ...badgeLines, END_MARKER]
+			: [START_MARKER, END_MARKER];
 
 	if (headingIndex >= 0) {
-		const before = lines.slice(0, headingIndex + 1);
-		const after = lines.slice(headingIndex + 1);
+		const before = nonBadgeLines.slice(0, headingIndex + 1);
+		const after = nonBadgeLines.slice(headingIndex + 1);
 		return [...before, "", ...markerLines, "", ...after].join("\n");
 	}
 
-	return [...markerLines, "", ...lines].join("\n");
+	return [...markerLines, "", ...nonBadgeLines].join("\n");
+}
+
+function extractExistingBadgeLines(
+	lines: string[],
+	searchStart: number,
+): { badgeLines: string[]; nonBadgeLines: string[] } {
+	const markdownBadgeRegex = /^\[!\[[^\]]*\]\([^)]+\)\]\([^)]+\)$/;
+	const htmlBadgeStartRegex = /^\s*<a\s+href=/i;
+	const htmlBadgeEndRegex = /<\/a>\s*$/i;
+	const htmlImgRegex = /<img\s+/i;
+	const maxScan = Math.min(lines.length, searchStart + 30);
+	const badgeLines: string[] = [];
+	const badgeIndexes = new Set<number>();
+	let foundBadge = false;
+
+	let index = searchStart;
+	while (index < maxScan) {
+		const line = lines[index];
+		const trimmed = line.trim();
+
+		if (trimmed === "") {
+			index += 1;
+			continue;
+		}
+
+		if (markdownBadgeRegex.test(trimmed)) {
+			foundBadge = true;
+			badgeLines.push(trimmed);
+			badgeIndexes.add(index);
+			index += 1;
+			continue;
+		}
+
+		if (htmlBadgeStartRegex.test(trimmed)) {
+			const htmlLines = [trimmed];
+			const htmlIndexes = [index];
+			let scan = index;
+			let hasImg = htmlImgRegex.test(trimmed);
+			let hasEnd = htmlBadgeEndRegex.test(trimmed);
+
+			while (!hasEnd && scan + 1 < maxScan) {
+				scan += 1;
+				const nextTrimmed = lines[scan].trim();
+				htmlLines.push(nextTrimmed);
+				htmlIndexes.push(scan);
+				if (htmlImgRegex.test(nextTrimmed)) hasImg = true;
+				if (htmlBadgeEndRegex.test(nextTrimmed)) hasEnd = true;
+			}
+
+			if (hasImg && hasEnd) {
+				foundBadge = true;
+				badgeLines.push(...htmlLines.filter((entry) => entry !== ""));
+				for (const badgeIndex of htmlIndexes) {
+					badgeIndexes.add(badgeIndex);
+				}
+				index = scan + 1;
+				continue;
+			}
+		}
+
+		if (foundBadge) {
+			break;
+		}
+
+		break;
+	}
+
+	const nonBadgeLines = lines.filter((_, idx) => !badgeIndexes.has(idx));
+	return { badgeLines, nonBadgeLines };
 }
 
 /**

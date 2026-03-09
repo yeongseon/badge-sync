@@ -31,12 +31,67 @@ export function createProgram(): Command {
       const result = await applyBadges(cwd, config, { dryRun: opts.dryRun }, packageDir);
 
       if (opts.dryRun) {
-        const { formatBadges } = await import('./formatter.js');
         const { resolveBadges } = await import('./resolver.js');
-        const metadata = await detectMetadata(packageDir ? resolve(cwd, packageDir) : cwd);
+        const { parseExistingBadges, readBadgeBlock } = await import('./readme.js');
+        const targetCwd = packageDir ? resolve(cwd, packageDir) : cwd;
+        const metadata = await detectMetadata(targetCwd);
         const badges = resolveBadges(metadata);
-        const formatted = formatBadges(badges, config);
-        process.stdout.write(`${formatted}\n`);
+        const readmePath = resolve(targetCwd, packageDir ? 'README.md' : config.readme);
+
+        let currentBlock = '';
+        try {
+          currentBlock = await readBadgeBlock(readmePath);
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : '';
+          const markerError = message.includes('Badge block markers not found');
+          const missingReadme = message.includes('ENOENT');
+          if (!markerError && !missingReadme) {
+            throw error;
+          }
+        }
+
+        const existingParsed = parseExistingBadges(currentBlock);
+        const existingByImageUrl = new Map(existingParsed.map((badge) => [badge.imageUrl, badge]));
+        const autoImageUrls = new Set(badges.map((badge) => badge.imageUrl));
+
+        let newCount = 0;
+        let updatedCount = 0;
+        let unchangedCount = 0;
+
+        const categorized = badges.map((badge) => {
+          const existing = existingByImageUrl.get(badge.imageUrl);
+          if (!existing) {
+            newCount += 1;
+            return { badge, marker: '+' as const };
+          }
+
+          const changed = existing.label !== badge.label || existing.linkUrl !== badge.linkUrl;
+          if (changed) {
+            updatedCount += 1;
+            return { badge, marker: '~' as const };
+          }
+
+          unchangedCount += 1;
+          return { badge, marker: '=' as const };
+        });
+
+        process.stdout.write('Dry run - no changes written\n\n');
+
+        process.stdout.write(
+          `Would apply ${badges.length} badge(s) (${newCount} new, ${updatedCount} updated, ${unchangedCount} unchanged):\n`,
+        );
+        for (const entry of categorized) {
+          process.stdout.write(`  ${entry.marker} [${entry.badge.group}] ${entry.badge.label}\n`);
+        }
+
+        const customBadges = existingParsed.filter((badge) => !autoImageUrls.has(badge.imageUrl));
+        if (customBadges.length > 0) {
+          process.stdout.write(`\n${customBadges.length} custom badge(s) preserved:\n`);
+          for (const badge of customBadges) {
+            process.stdout.write(`  = [custom] ${badge.label}\n`);
+          }
+        }
+
         return;
       }
 
@@ -71,6 +126,7 @@ export function createProgram(): Command {
       }
 
       process.stdout.write('Badges are out of sync\n\n');
+      process.stdout.write(`Detected ${countLineDifferences(result.expected, result.current)} difference(s)\n\n`);
       process.stdout.write('Expected:\n');
       process.stdout.write(`${result.expected}\n\n`);
       process.stdout.write('Current:\n');
@@ -218,4 +274,19 @@ async function resolvePackageDir(cwd: string, packageName?: string): Promise<str
   }
 
   return target.path;
+}
+
+function countLineDifferences(expected: string, current: string): number {
+  const expectedLines = expected.split('\n');
+  const currentLines = current.split('\n');
+  const maxLines = Math.max(expectedLines.length, currentLines.length);
+
+  let differences = 0;
+  for (let i = 0; i < maxLines; i += 1) {
+    if ((expectedLines[i] ?? '') !== (currentLines[i] ?? '')) {
+      differences += 1;
+    }
+  }
+
+  return differences;
 }
