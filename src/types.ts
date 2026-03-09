@@ -20,6 +20,10 @@ export interface RepositoryMetadata {
   packageName: string | null;
   /** Per-ecosystem package names for multi-ecosystem projects */
   packageNames: Partial<Record<Ecosystem, string>>;
+  /** Whether this project is a monorepo */
+  isMonorepo: boolean;
+  /** Detected monorepo packages with their paths */
+  packages: MonorepoPackage[];
   /** Detected coverage service (codecov, coveralls, or null for generic) */
   coverageService: string | null;
   /** Whether coverage tooling was detected in the project */
@@ -31,6 +35,16 @@ export interface RepositoryMetadata {
   workflows: string[];
   nodeVersion: string | null;
   pythonVersion: string | null;
+}
+
+/** A package within a monorepo */
+export interface MonorepoPackage {
+  /** Package name */
+  name: string;
+  /** Relative path from root */
+  path: string;
+  /** Detected ecosystem */
+  ecosystem: Ecosystem;
 }
 
 /** Single badge definition */
