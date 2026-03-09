@@ -7,6 +7,8 @@ function makeMetadata(overrides: Partial<RepositoryMetadata> = {}): RepositoryMe
     ecosystem: [],
     packageName: null,
     packageNames: {},
+    coverageService: null,
+    hasCoverage: false,
     repositoryUrl: null,
     owner: null,
     repo: null,
@@ -150,6 +152,73 @@ describe('resolver', () => {
       });
       const badges = resolveBadges(meta);
       expect(badges.filter((b) => b.group === 'build')).toHaveLength(0);
+    });
+  });
+
+  describe('Quality badges', () => {
+    it('generates coverage badge with codecov service', () => {
+      const meta = makeMetadata({
+        hasCoverage: true,
+        coverageService: 'codecov',
+        owner: 'user',
+        repo: 'my-lib',
+      });
+      const badges = resolveBadges(meta);
+      const coverage = badges.find((b) => b.type === 'coverage');
+      expect(coverage).toBeDefined();
+      expect(coverage!.group).toBe('quality');
+      expect(coverage!.imageUrl).toBe('https://codecov.io/gh/user/my-lib/branch/main/graph/badge.svg');
+      expect(coverage!.linkUrl).toBe('https://codecov.io/gh/user/my-lib');
+    });
+
+    it('generates coverage badge with coveralls service', () => {
+      const meta = makeMetadata({
+        hasCoverage: true,
+        coverageService: 'coveralls',
+        owner: 'user',
+        repo: 'my-lib',
+      });
+      const badges = resolveBadges(meta);
+      const coverage = badges.find((b) => b.type === 'coverage');
+      expect(coverage).toBeDefined();
+      expect(coverage!.group).toBe('quality');
+      expect(coverage!.imageUrl).toBe('https://coveralls.io/repos/github/user/my-lib/badge.svg?branch=main');
+      expect(coverage!.linkUrl).toBe('https://coveralls.io/github/user/my-lib?branch=main');
+    });
+
+    it('generates generic coverage badge when service is null', () => {
+      const meta = makeMetadata({
+        hasCoverage: true,
+        coverageService: null,
+        owner: 'user',
+        repo: 'my-lib',
+      });
+      const badges = resolveBadges(meta);
+      const coverage = badges.find((b) => b.type === 'coverage');
+      expect(coverage).toBeDefined();
+      expect(coverage!.group).toBe('quality');
+      expect(coverage!.imageUrl).toBe('https://codecov.io/gh/user/my-lib/branch/main/graph/badge.svg');
+      expect(coverage!.linkUrl).toBe('https://codecov.io/gh/user/my-lib');
+    });
+
+    it('skips coverage badge when hasCoverage is false', () => {
+      const meta = makeMetadata({
+        hasCoverage: false,
+        coverageService: 'codecov',
+        owner: 'user',
+        repo: 'my-lib',
+      });
+      const badges = resolveBadges(meta);
+      expect(badges.find((b) => b.type === 'coverage')).toBeUndefined();
+    });
+
+    it('skips coverage badge when owner/repo are missing', () => {
+      const meta = makeMetadata({
+        hasCoverage: true,
+        coverageService: 'codecov',
+      });
+      const badges = resolveBadges(meta);
+      expect(badges.find((b) => b.type === 'coverage')).toBeUndefined();
     });
   });
 

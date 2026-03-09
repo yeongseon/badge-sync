@@ -108,6 +108,8 @@ describe('cli action handlers', () => {
         ecosystem: ['javascript'],
         packageName: 'test',
         packageNames: { javascript: 'test' },
+        coverageService: null,
+        hasCoverage: false,
         repositoryUrl: null,
         owner: null,
         repo: null,

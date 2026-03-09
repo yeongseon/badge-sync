@@ -78,6 +78,35 @@ export function resolveBadges(metadata: RepositoryMetadata): Badge[] {
     }
   }
 
+  // Quality badges — coverage
+  if (metadata.hasCoverage && metadata.owner && metadata.repo) {
+    if (metadata.coverageService === 'codecov') {
+      badges.push({
+        type: 'coverage',
+        group: 'quality',
+        label: 'coverage',
+        imageUrl: `https://codecov.io/gh/${metadata.owner}/${metadata.repo}/branch/main/graph/badge.svg`,
+        linkUrl: `https://codecov.io/gh/${metadata.owner}/${metadata.repo}`,
+      });
+    } else if (metadata.coverageService === 'coveralls') {
+      badges.push({
+        type: 'coverage',
+        group: 'quality',
+        label: 'coverage',
+        imageUrl: `https://coveralls.io/repos/github/${metadata.owner}/${metadata.repo}/badge.svg?branch=main`,
+        linkUrl: `https://coveralls.io/github/${metadata.owner}/${metadata.repo}?branch=main`,
+      });
+    } else {
+      badges.push({
+        type: 'coverage',
+        group: 'quality',
+        label: 'coverage',
+        imageUrl: `https://codecov.io/gh/${metadata.owner}/${metadata.repo}/branch/main/graph/badge.svg`,
+        linkUrl: `https://codecov.io/gh/${metadata.owner}/${metadata.repo}`,
+      });
+    }
+  }
+
   // Metadata badges
   if (metadata.license && metadata.owner && metadata.repo) {
     badges.push({
