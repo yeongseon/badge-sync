@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { resolveBadges } from '../src/resolver.js';
 import type { RepositoryMetadata } from '../src/types.js';
 
@@ -193,7 +193,7 @@ describe('resolver', () => {
       expect(coverage.linkUrl).toBe('https://coveralls.io/github/user/my-lib?branch=main');
     });
 
-    it('generates generic coverage badge when service is null', () => {
+    it('does not generate coverage badge when only tooling exists without service', () => {
       const meta = makeMetadata({
         hasCoverage: true,
         coverageService: null,
@@ -201,13 +201,21 @@ describe('resolver', () => {
         repo: 'my-lib',
       });
       const badges = resolveBadges(meta);
-      const coverage = expectBadge(badges, 'coverage');
-      expect(coverage.group).toBe('quality');
-      expect(coverage.imageUrl).toBe('https://codecov.io/gh/user/my-lib/branch/main/graph/badge.svg');
-      expect(coverage.linkUrl).toBe('https://codecov.io/gh/user/my-lib');
+      expect(badges.find((b) => b.type === 'coverage')).toBeUndefined();
     });
 
-    it('skips coverage badge when hasCoverage is false', () => {
+    it('generates coverage badge when codecov service is configured', () => {
+      const meta = makeMetadata({
+        hasCoverage: true,
+        coverageService: 'codecov',
+        owner: 'testuser',
+        repo: 'my-lib',
+      });
+      const badges = resolveBadges(meta);
+      expect(badges.find((b) => b.type === 'coverage')).toBeDefined();
+    });
+
+    it('generates coverage badge when service is configured even if hasCoverage is false', () => {
       const meta = makeMetadata({
         hasCoverage: false,
         coverageService: 'codecov',
@@ -215,7 +223,7 @@ describe('resolver', () => {
         repo: 'my-lib',
       });
       const badges = resolveBadges(meta);
-      expect(badges.find((b) => b.type === 'coverage')).toBeUndefined();
+      expect(badges.find((b) => b.type === 'coverage')).toBeDefined();
     });
 
     it('skips coverage badge when owner/repo are missing', () => {
