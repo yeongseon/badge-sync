@@ -1,6 +1,5 @@
-import { resolve } from 'node:path';
 import { Command } from 'commander';
-import { applyBadges, checkBadges, doctorBadges, initBadges, listBadges, repairBadges } from './applier.js';
+import { applyBadges, buildDryRunReport, checkBadges, doctorBadges, initBadges, listBadges, repairBadges } from './applier.js';
 import { loadConfig } from './config.js';
 import { detectMetadata } from './detector.js';
 
@@ -31,63 +30,19 @@ export function createProgram(): Command {
       const result = await applyBadges(cwd, config, { dryRun: opts.dryRun }, packageDir);
 
       if (opts.dryRun) {
-        const { resolveBadges } = await import('./resolver.js');
-        const { parseExistingBadges, readBadgeBlock } = await import('./readme.js');
-        const targetCwd = packageDir ? resolve(cwd, packageDir) : cwd;
-        const metadata = await detectMetadata(targetCwd);
-        const badges = resolveBadges(metadata);
-        const readmePath = resolve(targetCwd, packageDir ? 'README.md' : config.readme);
-
-        let currentBlock = '';
-        try {
-          currentBlock = await readBadgeBlock(readmePath);
-        } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : '';
-          const markerError = message.includes('Badge block markers not found');
-          const missingReadme = message.includes('ENOENT');
-          if (!markerError && !missingReadme) {
-            throw error;
-          }
-        }
-
-        const existingParsed = parseExistingBadges(currentBlock);
-        const existingByImageUrl = new Map(existingParsed.map((badge) => [badge.imageUrl, badge]));
-        const autoImageUrls = new Set(badges.map((badge) => badge.imageUrl));
-
-        let newCount = 0;
-        let updatedCount = 0;
-        let unchangedCount = 0;
-
-        const categorized = badges.map((badge) => {
-          const existing = existingByImageUrl.get(badge.imageUrl);
-          if (!existing) {
-            newCount += 1;
-            return { badge, marker: '+' as const };
-          }
-
-          const changed = existing.label !== badge.label || existing.linkUrl !== badge.linkUrl;
-          if (changed) {
-            updatedCount += 1;
-            return { badge, marker: '~' as const };
-          }
-
-          unchangedCount += 1;
-          return { badge, marker: '=' as const };
-        });
+        const report = await buildDryRunReport(cwd, config, packageDir);
 
         process.stdout.write('Dry run - no changes written\n\n');
-
         process.stdout.write(
-          `Would apply ${badges.length} badge(s) (${newCount} new, ${updatedCount} updated, ${unchangedCount} unchanged):\n`,
+          `Would apply ${report.total} badge(s) (${report.newCount} new, ${report.updatedCount} updated, ${report.unchangedCount} unchanged):\n`,
         );
-        for (const entry of categorized) {
+        for (const entry of report.entries) {
           process.stdout.write(`  ${entry.marker} [${entry.badge.group}] ${entry.badge.label}\n`);
         }
 
-        const customBadges = existingParsed.filter((badge) => !autoImageUrls.has(badge.imageUrl));
-        if (customBadges.length > 0) {
-          process.stdout.write(`\n${customBadges.length} custom badge(s) preserved:\n`);
-          for (const badge of customBadges) {
+        if (report.customBadges.length > 0) {
+          process.stdout.write(`\n${report.customBadges.length} custom badge(s) preserved:\n`);
+          for (const badge of report.customBadges) {
             process.stdout.write(`  = [custom] ${badge.label}\n`);
           }
         }

@@ -1,21 +1,23 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
+import { DEFAULT_CONFIG } from "./config.js";
 import { detectMetadata, detectReadmeFile } from "./detector.js";
 import { formatBadges } from "./formatter.js";
 import {
+	insertBadgeMarkers,
 	parseExistingBadges,
 	readBadgeBlock,
+	START_MARKER,
 	writeBadgeBlock,
 } from "./readme.js";
-import { resolveBadges } from "./resolver.js";
+import { inferBadgeGroup, inferBadgeType, resolveBadges } from "./resolver.js";
 import type {
 	Badge,
 	Config,
 	MonorepoPackage,
 	ValidationResult,
 } from "./types.js";
-import { DEFAULT_CONFIG } from "./types.js";
 import { validateBadges } from "./validator.js";
 
 /** Result from the apply command */
@@ -58,10 +60,11 @@ export interface InitResult {
 	badges: Badge[];
 }
 
-const START_MARKER = "<!-- BADGES:START -->";
-const END_MARKER = "<!-- BADGES:END -->";
-
-function resolveReadmePath(cwd: string, config: Config, packageDir?: string): string {
+function resolveReadmePath(
+	cwd: string,
+	config: Config,
+	packageDir?: string,
+): string {
 	if (packageDir) {
 		return resolve(cwd, packageDir, "README.md");
 	}
@@ -334,97 +337,6 @@ export async function initBadges(
 	};
 }
 
-function insertBadgeMarkers(readmeContent: string): string {
-	const lines = readmeContent.split(/\r?\n/);
-	const headingIndex = lines.findIndex((line) => line.startsWith("# "));
-	const searchStart = headingIndex >= 0 ? headingIndex + 1 : 0;
-	const { badgeLines, nonBadgeLines } = extractExistingBadgeLines(
-		lines,
-		searchStart,
-	);
-	const markerLines =
-		badgeLines.length > 0
-			? [START_MARKER, ...badgeLines, END_MARKER]
-			: [START_MARKER, END_MARKER];
-
-	if (headingIndex >= 0) {
-		const before = nonBadgeLines.slice(0, headingIndex + 1);
-		const after = nonBadgeLines.slice(headingIndex + 1);
-		return [...before, "", ...markerLines, "", ...after].join("\n");
-	}
-
-	return [...markerLines, "", ...nonBadgeLines].join("\n");
-}
-
-function extractExistingBadgeLines(
-	lines: string[],
-	searchStart: number,
-): { badgeLines: string[]; nonBadgeLines: string[] } {
-	const markdownBadgeRegex = /^\[!\[[^\]]*\]\([^)]+\)\]\([^)]+\)$/;
-	const htmlBadgeStartRegex = /^\s*<a\s+href=/i;
-	const htmlBadgeEndRegex = /<\/a>\s*$/i;
-	const htmlImgRegex = /<img\s+/i;
-	const maxScan = Math.min(lines.length, searchStart + 30);
-	const badgeLines: string[] = [];
-	const badgeIndexes = new Set<number>();
-	let foundBadge = false;
-
-	let index = searchStart;
-	while (index < maxScan) {
-		const line = lines[index];
-		const trimmed = line.trim();
-
-		if (trimmed === "") {
-			index += 1;
-			continue;
-		}
-
-		if (markdownBadgeRegex.test(trimmed)) {
-			foundBadge = true;
-			badgeLines.push(trimmed);
-			badgeIndexes.add(index);
-			index += 1;
-			continue;
-		}
-
-		if (htmlBadgeStartRegex.test(trimmed)) {
-			const htmlLines = [trimmed];
-			const htmlIndexes = [index];
-			let scan = index;
-			let hasImg = htmlImgRegex.test(trimmed);
-			let hasEnd = htmlBadgeEndRegex.test(trimmed);
-
-			while (!hasEnd && scan + 1 < maxScan) {
-				scan += 1;
-				const nextTrimmed = lines[scan].trim();
-				htmlLines.push(nextTrimmed);
-				htmlIndexes.push(scan);
-				if (htmlImgRegex.test(nextTrimmed)) hasImg = true;
-				if (htmlBadgeEndRegex.test(nextTrimmed)) hasEnd = true;
-			}
-
-			if (hasImg && hasEnd) {
-				foundBadge = true;
-				badgeLines.push(...htmlLines.filter((entry) => entry !== ""));
-				for (const badgeIndex of htmlIndexes) {
-					badgeIndexes.add(badgeIndex);
-				}
-				index = scan + 1;
-				continue;
-			}
-		}
-
-		if (foundBadge) {
-			break;
-		}
-
-		break;
-	}
-
-	const nonBadgeLines = lines.filter((_, idx) => !badgeIndexes.has(idx));
-	return { badgeLines, nonBadgeLines };
-}
-
 /**
  * Merge auto-detected badges with existing badge block content.
  * Preserves user-added custom badges that are not auto-detected.
@@ -452,20 +364,22 @@ export function mergeBadgesWithExisting(
 		return formattedAutoDetected;
 	}
 
-	const autoDetectedImageUrls = new Set(autoDetectedBadges.map((badge) => badge.imageUrl));
-	const autoDetectedTypes = new Set(autoDetectedBadges.map((badge) => badge.type));
+	const autoDetectedImageUrls = new Set(
+		autoDetectedBadges.map((badge) => badge.imageUrl),
+	);
+	const autoDetectedTypes = new Set(
+		autoDetectedBadges.map((badge) => badge.type),
+	);
 
 	// Preserve only badges that are neither current auto-detected matches nor managed badge types.
-	const customBadges = existingParsed.filter(
-		(existing) => {
-			if (autoDetectedImageUrls.has(existing.imageUrl)) {
-				return false;
-			}
+	const customBadges = existingParsed.filter((existing) => {
+		if (autoDetectedImageUrls.has(existing.imageUrl)) {
+			return false;
+		}
 
-			const inferredType = inferBadgeType(existing.imageUrl, existing.linkUrl);
-			return !inferredType || !autoDetectedTypes.has(inferredType);
-		},
-	);
+		const inferredType = inferBadgeType(existing.imageUrl, existing.linkUrl);
+		return !inferredType || !autoDetectedTypes.has(inferredType);
+	});
 
 	// If no custom badges, return just the auto-detected formatted output
 	if (customBadges.length === 0) {
@@ -497,64 +411,91 @@ function toExistingBadgeDefinition(existing: {
 	};
 }
 
-function inferBadgeType(imageUrl: string, linkUrl: string): string | null {
-	if (imageUrl.includes("img.shields.io/npm/v/")) {
-		return "npm-version";
-	}
-	if (imageUrl.includes("img.shields.io/node/v/")) {
-		return "node-version";
-	}
-	if (imageUrl.includes("img.shields.io/pypi/v/")) {
-		return "pypi-version";
-	}
-	if (imageUrl.includes("img.shields.io/pypi/pyversions/")) {
-		return "python-version";
-	}
-	if (imageUrl.includes("img.shields.io/crates/v/")) {
-		return "crates-version";
-	}
-	if (imageUrl.includes("/actions/workflows/") && imageUrl.includes("/badge.svg")) {
-		const workflow = imageUrl.match(/\/actions\/workflows\/([^/]+)\/badge\.svg/i)?.[1];
-		const workflowName = workflow
-			? decodeURIComponent(workflow).replace(/\.(yml|yaml)$/i, "")
-			: "workflow";
-		return `github-actions-${workflowName}`;
-	}
-	if (imageUrl.includes("codecov.io/gh/") || imageUrl.includes("coveralls.io/")) {
-		return "coverage";
-	}
-	if (imageUrl.includes("img.shields.io/github/license/")) {
-		return "license";
-	}
-	if (imageUrl.includes("img.shields.io/github/stars/")) {
-		return "stars";
-	}
-	if (linkUrl.includes("/actions/workflows/")) {
-		const workflow = linkUrl.match(/\/actions\/workflows\/([^/?#]+)/i)?.[1];
-		const workflowName = workflow
-			? decodeURIComponent(workflow).replace(/\.(yml|yaml)$/i, "")
-			: "workflow";
-		return `github-actions-${workflowName}`;
-	}
-
-	return null;
+/** Categorized badge entry for dry-run reporting */
+export interface DryRunEntry {
+	badge: Badge;
+	marker: "+" | "~" | "=";
 }
 
-function inferBadgeGroup(type: string): Badge["group"] {
-	if (type === "npm-version" || type === "pypi-version" || type === "crates-version") {
-		return "distribution";
+/** Dry-run report data */
+export interface DryRunReport {
+	total: number;
+	newCount: number;
+	updatedCount: number;
+	unchangedCount: number;
+	entries: DryRunEntry[];
+	customBadges: Array<{
+		label: string;
+		imageUrl: string;
+		linkUrl: string;
+		raw: string;
+	}>;
+}
+
+/**
+ * Build a dry-run report comparing auto-detected badges against the current badge block.
+ * Returns structured data that the CLI can format for display.
+ */
+export async function buildDryRunReport(
+	cwd: string,
+	config: Config,
+	packageDir?: string,
+): Promise<DryRunReport> {
+	const targetCwd = packageDir ? resolve(cwd, packageDir) : cwd;
+	const metadata = await detectMetadata(targetCwd);
+	const badges = resolveBadges(metadata);
+	const readmePath = resolveReadmePath(cwd, config, packageDir);
+
+	let currentBlock = "";
+	try {
+		currentBlock = await readBadgeBlock(readmePath);
+	} catch (error: unknown) {
+		const message = error instanceof Error ? error.message : "";
+		const markerError = message.includes("Badge block markers not found");
+		const missingReadme = message.includes("ENOENT");
+		if (!markerError && !missingReadme) {
+			throw error;
+		}
 	}
-	if (type === "node-version" || type === "python-version") {
-		return "runtime";
-	}
-	if (type.startsWith("github-actions-")) {
-		return "build";
-	}
-	if (type === "coverage") {
-		return "quality";
-	}
-	if (type === "license") {
-		return "metadata";
-	}
-	return "social";
+
+	const existingParsed = parseExistingBadges(currentBlock);
+	const existingByImageUrl = new Map(
+		existingParsed.map((b) => [b.imageUrl, b]),
+	);
+	const autoImageUrls = new Set(badges.map((b) => b.imageUrl));
+
+	let newCount = 0;
+	let updatedCount = 0;
+	let unchangedCount = 0;
+
+	const entries: DryRunEntry[] = badges.map((badge) => {
+		const existing = existingByImageUrl.get(badge.imageUrl);
+		if (!existing) {
+			newCount += 1;
+			return { badge, marker: "+" as const };
+		}
+
+		const changed =
+			existing.label !== badge.label || existing.linkUrl !== badge.linkUrl;
+		if (changed) {
+			updatedCount += 1;
+			return { badge, marker: "~" as const };
+		}
+
+		unchangedCount += 1;
+		return { badge, marker: "=" as const };
+	});
+
+	const customBadges = existingParsed.filter(
+		(b) => !autoImageUrls.has(b.imageUrl),
+	);
+
+	return {
+		total: badges.length,
+		newCount,
+		updatedCount,
+		unchangedCount,
+		entries,
+		customBadges,
+	};
 }

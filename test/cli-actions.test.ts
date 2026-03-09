@@ -7,21 +7,12 @@ vi.mock('../src/config.js', () => ({
 }));
 vi.mock('../src/applier.js', () => ({
   applyBadges: vi.fn(),
+  buildDryRunReport: vi.fn(),
   checkBadges: vi.fn(),
   doctorBadges: vi.fn(),
   repairBadges: vi.fn(),
   listBadges: vi.fn(),
   initBadges: vi.fn(),
-}));
-vi.mock('../src/formatter.js', () => ({
-  formatBadges: vi.fn(),
-}));
-vi.mock('../src/resolver.js', () => ({
-  resolveBadges: vi.fn(),
-}));
-vi.mock('../src/readme.js', () => ({
-  readBadgeBlock: vi.fn(),
-  parseExistingBadges: vi.fn(),
 }));
 vi.mock('../src/detector.js', () => ({
   detectMetadata: vi.fn(),
@@ -29,21 +20,17 @@ vi.mock('../src/detector.js', () => ({
 
 const { createProgram } = await import('../src/cli.js');
 const { loadConfig } = await import('../src/config.js');
-const { applyBadges, checkBadges, doctorBadges, repairBadges, listBadges, initBadges } = await import('../src/applier.js');
-const { resolveBadges } = await import('../src/resolver.js');
-const { readBadgeBlock, parseExistingBadges } = await import('../src/readme.js');
+const { applyBadges, buildDryRunReport, checkBadges, doctorBadges, repairBadges, listBadges, initBadges } = await import('../src/applier.js');
 const { detectMetadata } = await import('../src/detector.js');
 
 const mockLoadConfig = vi.mocked(loadConfig);
 const mockApplyBadges = vi.mocked(applyBadges);
+const mockBuildDryRunReport = vi.mocked(buildDryRunReport);
 const mockCheckBadges = vi.mocked(checkBadges);
 const mockDoctorBadges = vi.mocked(doctorBadges);
 const mockRepairBadges = vi.mocked(repairBadges);
 const mockListBadges = vi.mocked(listBadges);
 const mockInitBadges = vi.mocked(initBadges);
-const mockResolveBadges = vi.mocked(resolveBadges);
-const mockReadBadgeBlock = vi.mocked(readBadgeBlock);
-const mockParseExistingBadges = vi.mocked(parseExistingBadges);
 const mockDetectMetadata = vi.mocked(detectMetadata);
 
 const defaultConfig: Config = {
@@ -114,22 +101,7 @@ describe('cli action handlers', () => {
         badges: [testBadge],
         changed: true,
       });
-      mockDetectMetadata.mockResolvedValue({
-        ecosystem: ['javascript'],
-        packageName: 'test',
-        packageNames: { javascript: 'test' },
-        isMonorepo: false,
-        packages: [],
-        coverageService: null,
-        hasCoverage: false,
-        repositoryUrl: null,
-        owner: null,
-        repo: null,
-        license: null,
-        workflows: [],
-        nodeVersion: null,
-        pythonVersion: null,
-      });
+
       const changedBadge: Badge = {
         ...testBadge,
         group: 'build',
@@ -155,28 +127,25 @@ describe('cli action handlers', () => {
         linkUrl: 'https://github.com/acme/repo/blob/main/LICENSE',
       };
 
-      mockResolveBadges.mockReturnValue([changedBadge, unchangedBadge, newBadge]);
-      mockReadBadgeBlock.mockResolvedValue('existing badges');
-      mockParseExistingBadges.mockReturnValue([
-        {
-          label: 'ci old workflow',
-          imageUrl: changedBadge.imageUrl,
-          linkUrl: 'https://github.com/acme/repo/actions/workflows/old-ci.yml',
-          raw: '[![ci old workflow](https://github.com/acme/repo/actions/workflows/ci.yml/badge.svg)](https://github.com/acme/repo/actions/workflows/old-ci.yml)',
-        },
-        {
-          label: unchangedBadge.label,
-          imageUrl: unchangedBadge.imageUrl,
-          linkUrl: unchangedBadge.linkUrl,
-          raw: '[![coverage](https://codecov.io/gh/acme/repo/branch/main/graph/badge.svg)](https://codecov.io/gh/acme/repo)',
-        },
-        {
-          label: 'pre-commit',
-          imageUrl: 'https://img.shields.io/badge/pre--commit-enabled-brightgreen',
-          linkUrl: 'https://pre-commit.com',
-          raw: '[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen)](https://pre-commit.com)',
-        },
-      ]);
+      mockBuildDryRunReport.mockResolvedValue({
+        total: 3,
+        newCount: 1,
+        updatedCount: 1,
+        unchangedCount: 1,
+        entries: [
+          { badge: changedBadge, marker: '~' },
+          { badge: unchangedBadge, marker: '=' },
+          { badge: newBadge, marker: '+' },
+        ],
+        customBadges: [
+          {
+            label: 'pre-commit',
+            imageUrl: 'https://img.shields.io/badge/pre--commit-enabled-brightgreen',
+            linkUrl: 'https://pre-commit.com',
+            raw: '[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen)](https://pre-commit.com)',
+          },
+        ],
+      });
 
       const program = createProgram();
       program.exitOverride();
@@ -191,31 +160,13 @@ describe('cli action handlers', () => {
       expect(writeSpy).toHaveBeenCalledWith('  = [custom] pre-commit\n');
     });
 
-    it('dry-run handles readBadgeBlock error with non-Error object', async () => {
+    it('dry-run handles buildDryRunReport error with non-Error object', async () => {
       mockApplyBadges.mockResolvedValue({
         applied: 1,
         badges: [testBadge],
         changed: true,
       });
-      mockDetectMetadata.mockResolvedValue({
-        ecosystem: ['javascript'],
-        packageName: 'test',
-        packageNames: { javascript: 'test' },
-        isMonorepo: false,
-        packages: [],
-        coverageService: null,
-        hasCoverage: false,
-        repositoryUrl: null,
-        owner: null,
-        repo: null,
-        license: null,
-        workflows: [],
-        nodeVersion: null,
-        pythonVersion: null,
-      });
-      mockResolveBadges.mockReturnValue([testBadge]);
-      mockReadBadgeBlock.mockRejectedValue('not an error object');
-      mockParseExistingBadges.mockReturnValue([]);
+      mockBuildDryRunReport.mockRejectedValue('not an error object');
 
       const program = createProgram();
       program.exitOverride();
@@ -228,30 +179,14 @@ describe('cli action handlers', () => {
       }
     });
 
-    it('dry-run rethrows readBadgeBlock errors that are not marker or ENOENT', async () => {
+    it('dry-run rethrows buildDryRunReport errors', async () => {
       mockApplyBadges.mockResolvedValue({
         applied: 1,
         badges: [testBadge],
         changed: true,
       });
-      mockDetectMetadata.mockResolvedValue({
-        ecosystem: ['javascript'],
-        packageName: 'test',
-        packageNames: { javascript: 'test' },
-        isMonorepo: false,
-        packages: [],
-        coverageService: null,
-        hasCoverage: false,
-        repositoryUrl: null,
-        owner: null,
-        repo: null,
-        license: null,
-        workflows: [],
-        nodeVersion: null,
-        pythonVersion: null,
-      });
       const testError = new Error('Some other read error');
-      mockReadBadgeBlock.mockRejectedValue(testError);
+      mockBuildDryRunReport.mockRejectedValue(testError);
 
       const program = createProgram();
       program.exitOverride();

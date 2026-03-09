@@ -10,6 +10,7 @@ import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	applyBadges,
+	buildDryRunReport,
 	checkBadges,
 	doctorBadges,
 	initBadges,
@@ -18,7 +19,7 @@ import {
 	repairBadges,
 } from "../src/applier.js";
 import type { Config } from "../src/types.js";
-import { DEFAULT_CONFIG } from "../src/types.js";
+import { DEFAULT_CONFIG } from "../src/config.js";
 
 const FIXTURES = resolve(import.meta.dirname, "fixtures");
 const TMP = resolve(import.meta.dirname, ".tmp-applier");
@@ -881,6 +882,111 @@ describe("applier", () => {
 
 			const result = mergeBadgesWithExisting(formatted, current, autoDetected);
 			expect(result).toBe(formatted);
+		});
+	});
+
+	describe("buildDryRunReport", () => {
+		it("categorizes badges as new when README has empty badge block", async () => {
+			const cwd = copyFixture("javascript-project");
+			const { execSync } = await import("node:child_process");
+			execSync("git init", { cwd, stdio: "pipe" });
+			execSync(
+				"git remote add origin https://github.com/testuser/my-awesome-lib.git",
+				{ cwd, stdio: "pipe" },
+			);
+
+			const config = makeConfig();
+			const report = await buildDryRunReport(cwd, config);
+
+			expect(report.total).toBeGreaterThan(0);
+			expect(report.newCount).toBe(report.total);
+			expect(report.updatedCount).toBe(0);
+			expect(report.unchangedCount).toBe(0);
+			expect(report.entries.every((e) => e.marker === "+")).toBe(true);
+			expect(report.customBadges).toHaveLength(0);
+		});
+
+		it("categorizes badges as unchanged after apply", async () => {
+			const cwd = copyFixture("javascript-project");
+			const { execSync } = await import("node:child_process");
+			execSync("git init", { cwd, stdio: "pipe" });
+			execSync(
+				"git remote add origin https://github.com/testuser/my-awesome-lib.git",
+				{ cwd, stdio: "pipe" },
+			);
+
+			const config = makeConfig();
+			await applyBadges(cwd, config);
+			const report = await buildDryRunReport(cwd, config);
+
+			expect(report.total).toBeGreaterThan(0);
+			expect(report.newCount).toBe(0);
+			expect(report.updatedCount).toBe(0);
+			expect(report.unchangedCount).toBe(report.total);
+			expect(report.entries.every((e) => e.marker === "=")).toBe(true);
+		});
+
+		it("detects custom badges in badge block", async () => {
+			const cwd = copyFixture("javascript-project");
+			const { execSync } = await import("node:child_process");
+			execSync("git init", { cwd, stdio: "pipe" });
+			execSync(
+				"git remote add origin https://github.com/testuser/my-awesome-lib.git",
+				{ cwd, stdio: "pipe" },
+			);
+
+			const config = makeConfig();
+			await applyBadges(cwd, config);
+
+			// Add a custom badge
+			const readme = readFileSync(resolve(cwd, "README.md"), "utf-8");
+			const customBadge =
+				"[![custom](https://example.com/badge.svg)](https://example.com)";
+			const updatedReadme = readme.replace(
+				"<!-- BADGES:END -->",
+				`${customBadge}\n<!-- BADGES:END -->`,
+			);
+			writeFileSync(resolve(cwd, "README.md"), updatedReadme);
+
+			const report = await buildDryRunReport(cwd, config);
+
+			expect(report.customBadges).toHaveLength(1);
+			expect(report.customBadges[0].label).toBe("custom");
+		});
+
+		it("handles missing badge markers gracefully", async () => {
+			const cwd = resolve(TMP, "dryrun-no-markers");
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(
+				resolve(cwd, "package.json"),
+				JSON.stringify({ name: "test-pkg" }),
+			);
+			writeFileSync(
+				resolve(cwd, "README.md"),
+				"# Test\n\nNo markers here\n",
+			);
+
+			const config = makeConfig();
+			const report = await buildDryRunReport(cwd, config);
+
+			// Should still return a report (all badges are new)
+			expect(report.total).toBeGreaterThan(0);
+			expect(report.newCount).toBe(report.total);
+		});
+
+		it("rethrows non-marker, non-ENOENT errors", async () => {
+			// Use a path that will cause an error other than marker/ENOENT
+			const cwd = resolve(TMP, "dryrun-rethrow");
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(
+				resolve(cwd, "package.json"),
+				JSON.stringify({ name: "test-pkg" }),
+			);
+			// Create README.md as a directory to trigger a read error
+			mkdirSync(resolve(cwd, "README.md"), { recursive: true });
+
+			const config = makeConfig();
+			await expect(buildDryRunReport(cwd, config)).rejects.toThrow();
 		});
 	});
 });
