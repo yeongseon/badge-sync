@@ -2,7 +2,10 @@ import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+	CI_WORKFLOW_PATTERNS,
+	detectReadmeFile,
 	detectMetadata,
+	isCIWorkflow,
 	isUtilityWorkflow,
 	UTILITY_WORKFLOW_PATTERNS,
 } from "../src/detector.js";
@@ -68,7 +71,7 @@ describe("detector", () => {
 			expect(meta.workflows).toContain("ci.yml");
 		});
 
-		it("excludes utility workflows like stale, labeler, maintenance", async () => {
+		it("includes only CI-like workflows based on allowlist", async () => {
 			const cwd = resolve(TMP_DETECTOR, "workflow-filter");
 			mkdirSync(resolve(cwd, ".github", "workflows"), { recursive: true });
 			writeFileSync(resolve(cwd, ".github", "workflows", "ci.yml"), "name: CI");
@@ -207,10 +210,48 @@ describe("detector", () => {
 	});
 
 	describe("Edge cases", () => {
-		it("exports utility workflow patterns and helper", () => {
+		it("exports CI workflow allowlist and legacy utility helper", () => {
+			expect(CI_WORKFLOW_PATTERNS).toContain("ci");
+			expect(isCIWorkflow("ci.yml")).toBe(true);
+			expect(isCIWorkflow("run-ci.yml")).toBe(true);
+			expect(isCIWorkflow("build_and_test.yml")).toBe(true);
+			expect(isCIWorkflow("update-sponsor-block.yml")).toBe(false);
+			expect(isCIWorkflow("create-cherry-pick-pr.yml")).toBe(false);
+
 			expect(UTILITY_WORKFLOW_PATTERNS).toContain("stale");
 			expect(isUtilityWorkflow("dependabot.yml")).toBe(true);
 			expect(isUtilityWorkflow("codeql.yml")).toBe(false);
+		});
+
+		it("detects javascript ecosystem for private package without npm package metadata", async () => {
+			const cwd = resolve(TMP_DETECTOR, "private-js-package");
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(
+				resolve(cwd, "package.json"),
+				JSON.stringify({
+					name: "private-js-package",
+					private: true,
+				}),
+			);
+
+			const meta = await detectMetadata(cwd);
+			expect(meta.ecosystem).toContain("javascript");
+			expect(meta.packageName).toBeNull();
+			expect(meta.packageNames.javascript).toBeUndefined();
+		});
+
+		it("auto-detects README filename variants", () => {
+			const cwd = resolve(TMP_DETECTOR, "readme-variants");
+			mkdirSync(cwd, { recursive: true });
+
+			expect(detectReadmeFile(cwd)).toBe("README.md");
+
+			writeFileSync(resolve(cwd, "Readme.md"), "# Title\n");
+			expect(detectReadmeFile(cwd)).toBe("Readme.md");
+
+			rmSync(resolve(cwd, "Readme.md"));
+			writeFileSync(resolve(cwd, "README.rst"), "Title\n=====\n");
+			expect(detectReadmeFile(cwd)).toBe("README.rst");
 		});
 
 		it("extracts repository URL from package.json string format", async () => {
@@ -573,6 +614,33 @@ describe("detector", () => {
 			expect(meta.packages).toEqual([
 				{ name: "core-lib", path: "modules/core-lib", ecosystem: "javascript" },
 			]);
+		});
+
+		it("detects Cargo workspace members as monorepo packages", async () => {
+			const cwd = resolve(TMP_DETECTOR, "cargo-workspace-monorepo");
+			mkdirSync(resolve(cwd, "crates", "api"), { recursive: true });
+			mkdirSync(resolve(cwd, "crates", "core"), { recursive: true });
+			writeFileSync(
+				resolve(cwd, "Cargo.toml"),
+				'[workspace]\nmembers = ["crates/*"]\n',
+			);
+			writeFileSync(
+				resolve(cwd, "crates", "api", "Cargo.toml"),
+				'[package]\nname = "workspace-api"\n',
+			);
+			writeFileSync(
+				resolve(cwd, "crates", "core", "Cargo.toml"),
+				'[package]\nname = "workspace-core"\n',
+			);
+
+			const meta = await detectMetadata(cwd);
+			expect(meta.isMonorepo).toBe(true);
+			expect(meta.packages).toEqual(
+				expect.arrayContaining([
+					{ name: "workspace-api", path: "crates/api", ecosystem: "rust" },
+					{ name: "workspace-core", path: "crates/core", ecosystem: "rust" },
+				]),
+			);
 		});
 
 		it("returns non-monorepo fields for normal project", async () => {

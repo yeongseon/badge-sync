@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
-import { detectMetadata } from "./detector.js";
+import { detectMetadata, detectReadmeFile } from "./detector.js";
 import { formatBadges } from "./formatter.js";
 import {
 	parseExistingBadges,
@@ -15,6 +15,7 @@ import type {
 	MonorepoPackage,
 	ValidationResult,
 } from "./types.js";
+import { DEFAULT_CONFIG } from "./types.js";
 import { validateBadges } from "./validator.js";
 
 /** Result from the apply command */
@@ -60,6 +61,19 @@ export interface InitResult {
 const START_MARKER = "<!-- BADGES:START -->";
 const END_MARKER = "<!-- BADGES:END -->";
 
+function resolveReadmePath(cwd: string, config: Config, packageDir?: string): string {
+	if (packageDir) {
+		return resolve(cwd, packageDir, "README.md");
+	}
+
+	const readmeFile =
+		config.readme === DEFAULT_CONFIG.readme
+			? detectReadmeFile(cwd)
+			: config.readme;
+
+	return resolve(cwd, readmeFile);
+}
+
 /**
  * Execute the `apply` command.
  * Detects metadata, resolves badges, formats them, and writes to README.
@@ -72,10 +86,7 @@ export async function applyBadges(
 	packageDir?: string,
 ): Promise<ApplyResult> {
 	const targetCwd = packageDir ? resolve(cwd, packageDir) : cwd;
-	const readmePath = resolve(
-		targetCwd,
-		packageDir ? "README.md" : config.readme,
-	);
+	const readmePath = resolveReadmePath(cwd, config, packageDir);
 
 	if (!existsSync(readmePath)) {
 		throw new Error(`README file not found: ${readmePath}`);
@@ -129,10 +140,7 @@ export async function checkBadges(
 	packageDir?: string,
 ): Promise<CheckResult> {
 	const targetCwd = packageDir ? resolve(cwd, packageDir) : cwd;
-	const readmePath = resolve(
-		targetCwd,
-		packageDir ? "README.md" : config.readme,
-	);
+	const readmePath = resolveReadmePath(cwd, config, packageDir);
 
 	if (!existsSync(readmePath)) {
 		throw new Error(`README file not found: ${readmePath}`);
@@ -170,7 +178,7 @@ export async function doctorBadges(
 	config: Config,
 	options: { timeout?: number } = {},
 ): Promise<DoctorResult> {
-	const readmePath = resolve(cwd, config.readme);
+	const readmePath = resolveReadmePath(cwd, config);
 
 	if (!existsSync(readmePath)) {
 		throw new Error(`README file not found: ${readmePath}`);
@@ -208,7 +216,7 @@ export async function repairBadges(
 	config: Config,
 	options: { dryRun?: boolean; timeout?: number } = {},
 ): Promise<RepairResult> {
-	const readmePath = resolve(cwd, config.readme);
+	const readmePath = resolveReadmePath(cwd, config);
 
 	if (!existsSync(readmePath)) {
 		throw new Error(`README file not found: ${readmePath}`);
@@ -270,7 +278,7 @@ export async function initBadges(
 	config: Config,
 	options: { markersOnly?: boolean } = {},
 ): Promise<InitResult> {
-	const readmePath = resolve(cwd, config.readme);
+	const readmePath = resolveReadmePath(cwd, config);
 	let readmeCreated = false;
 
 	if (!existsSync(readmePath)) {

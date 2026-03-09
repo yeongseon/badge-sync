@@ -11,6 +11,9 @@ interface CoverageDetection {
 	coverageService: string | null;
 }
 
+/**
+ * @deprecated Use CI_WORKFLOW_PATTERNS and isCIWorkflow instead.
+ */
 export const UTILITY_WORKFLOW_PATTERNS = [
 	"stale",
 	"labeler",
@@ -28,9 +31,69 @@ export const UTILITY_WORKFLOW_PATTERNS = [
 	"assign",
 ] as const;
 
+/**
+ * @deprecated Use isCIWorkflow instead.
+ */
 export function isUtilityWorkflow(filename: string): boolean {
 	const name = filename.replace(/\.(yml|yaml)$/, "").toLowerCase();
 	return UTILITY_WORKFLOW_PATTERNS.some((pattern) => name.includes(pattern));
+}
+
+/**
+ * Allowlist patterns for CI workflows that should generate badges.
+ * Only workflows matching these patterns will produce build badges.
+ * This is deliberately conservative - most workflows (releases, bots,
+ * security scans, docs, etc.) are NOT suitable as CI status badges.
+ */
+export const CI_WORKFLOW_PATTERNS = [
+	"ci",
+	"test",
+	"tests",
+	"build",
+	"lint",
+	"check",
+	"e2e",
+	"integration",
+	"unit-test",
+	"unit-tests",
+	"typecheck",
+	"type-check",
+] as const;
+
+/**
+ * Check if a workflow filename matches CI patterns that should generate badges.
+ * Uses segment matching (split by - and _) to avoid substring false positives.
+ * Examples:
+ *   "ci.yml" -> true (exact match)
+ *   "build_and_test.yml" -> true (contains "build" and "test" segments)
+ *   "run-ci.yml" -> true (contains "ci" segment)
+ *   "update-sponsor-block.yml" -> false (no CI segments)
+ *   "create-cherry-pick-pr.yml" -> false
+ */
+export function isCIWorkflow(filename: string): boolean {
+	const name = filename.replace(/\.(yml|yaml)$/, "").toLowerCase();
+	const segments = name.split(/[-_]/);
+	return CI_WORKFLOW_PATTERNS.some((pattern) => segments.includes(pattern));
+}
+
+/**
+ * Auto-detect the README filename by scanning common variants.
+ * Returns the first match found, defaults to "README.md".
+ */
+export function detectReadmeFile(cwd: string): string {
+	const candidates = [
+		"README.md",
+		"Readme.md",
+		"readme.md",
+		"README.rst",
+		"readme.rst",
+	];
+	for (const name of candidates) {
+		if (existsSync(join(cwd, name))) {
+			return name;
+		}
+	}
+	return "README.md";
 }
 
 /**
@@ -203,7 +266,8 @@ export async function detectMetadata(cwd: string): Promise<RepositoryMetadata> {
 		metadata.ecosystem.push("javascript");
 		try {
 			const pkg = JSON.parse(packageJson) as Record<string, unknown>;
-			if (typeof pkg.name === "string") {
+			const isPrivate = pkg.private === true;
+			if (!isPrivate && typeof pkg.name === "string") {
 				metadata.packageName = pkg.name;
 				metadata.packageNames.javascript = pkg.name;
 			}
@@ -302,10 +366,12 @@ export async function detectMetadata(cwd: string): Promise<RepositoryMetadata> {
 export async function detectMonorepo(
 	cwd: string,
 ): Promise<{ isMonorepo: boolean; packages: MonorepoPackage[] }> {
-	const [rootPackageJson, pnpmWorkspaceYaml, lernaJson] = await Promise.all([
+	const [rootPackageJson, pnpmWorkspaceYaml, lernaJson, cargoToml] =
+		await Promise.all([
 		readFileSafe(join(cwd, "package.json")),
 		readFileSafe(join(cwd, "pnpm-workspace.yaml")),
 		readFileSafe(join(cwd, "lerna.json")),
+		readFileSafe(join(cwd, "Cargo.toml")),
 	]);
 
 	const workspacePatterns = new Set<string>();
@@ -319,6 +385,9 @@ export async function detectMonorepo(
 
 	const lernaPatterns = parseLernaPatterns(lernaJson);
 	for (const pattern of lernaPatterns) workspacePatterns.add(pattern);
+
+	const cargoMembers = parseCargoWorkspaceMembers(cargoToml);
+	for (const pattern of cargoMembers) workspacePatterns.add(pattern);
 
 	if (workspacePatterns.size === 0) {
 		return { isMonorepo: false, packages: [] };
@@ -465,6 +534,39 @@ function parseLernaPatterns(lernaJson: string | null): string[] {
 	);
 }
 
+function parseCargoWorkspaceMembers(cargoToml: string | null): string[] {
+	if (cargoToml === null) return [];
+
+	const workspaceSectionMatch = cargoToml.match(/^\[workspace\]/m);
+	if (!workspaceSectionMatch || workspaceSectionMatch.index === undefined) {
+		return [];
+	}
+
+	const afterSection = cargoToml.slice(
+		workspaceSectionMatch.index + workspaceSectionMatch[0].length,
+	);
+	const nextSection = afterSection.match(/^\[(?!workspace\.)/m);
+	const sectionContent =
+		nextSection?.index !== undefined
+			? afterSection.slice(0, nextSection.index)
+			: afterSection;
+
+	const membersMatch = sectionContent.match(/members\s*=\s*\[([\s\S]*?)\]/);
+	if (!membersMatch) return [];
+
+	const membersStr = membersMatch[1];
+	const members: string[] = [];
+	const entryRegex = /["']([^"']+)["']/g;
+	let match: RegExpExecArray | null;
+	match = entryRegex.exec(membersStr);
+	while (match !== null) {
+		members.push(match[1]);
+		match = entryRegex.exec(membersStr);
+	}
+
+	return members;
+}
+
 async function detectCoverage(cwd: string): Promise<CoverageDetection> {
 	const hasCodecovConfig =
 		existsSync(join(cwd, "codecov.yml")) ||
@@ -609,7 +711,7 @@ async function detectWorkflows(cwd: string): Promise<string[]> {
 	}
 
 	const files = await fg(["*.yml", "*.yaml"], { cwd: workflowDir });
-	return files.filter((file) => !isUtilityWorkflow(file)).sort();
+	return files.filter((file) => isCIWorkflow(file)).sort();
 }
 
 async function detectLicense(cwd: string): Promise<string | null> {
