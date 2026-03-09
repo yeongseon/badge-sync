@@ -90,3 +90,43 @@ export async function writeBadgeBlock(
 export function hasBadgeBlock(content: string): boolean {
   return content.includes(START_MARKER) && content.includes(END_MARKER);
 }
+
+/** Regex to match a markdown badge line: [![label](imageUrl)](linkUrl) */
+const BADGE_LINE_REGEX = /^\[!\[([^\]]*)\]\(([^)]+)\)\]\(([^)]+)\)$/;
+
+/** A parsed badge line from existing README content */
+export interface ParsedBadgeLine {
+  label: string;
+  imageUrl: string;
+  linkUrl: string;
+  raw: string;
+}
+
+/**
+ * Parse existing badge lines from a badge block content string.
+ * Returns an array of parsed badge lines.
+ * Non-badge lines (empty lines, comments, other markdown) are ignored.
+ */
+export function parseExistingBadges(blockContent: string): ParsedBadgeLine[] {
+  if (blockContent.trim() === '') return [];
+
+  const lines = blockContent.split('\n');
+  const badges: ParsedBadgeLine[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed === '') continue;
+
+    const match = BADGE_LINE_REGEX.exec(trimmed);
+    if (match) {
+      badges.push({
+        label: match[1],
+        imageUrl: match[2],
+        linkUrl: match[3],
+        raw: trimmed,
+      });
+    }
+  }
+
+  return badges;
+}

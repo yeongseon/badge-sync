@@ -3,6 +3,7 @@ import {
   extractBadgeBlock,
   replaceBadgeBlock,
   hasBadgeBlock,
+  parseExistingBadges,
 } from '../src/readme.js';
 
 describe('readme', () => {
@@ -145,6 +146,46 @@ describe('readme', () => {
 
     it('returns false when only end marker present', () => {
       expect(hasBadgeBlock('<!-- BADGES:END -->')).toBe(false);
+    });
+  });
+
+  describe('parseExistingBadges', () => {
+    it('parses standard badge lines', () => {
+      const block = [
+        '[![npm](https://img.shields.io/npm/v/my-lib)](https://www.npmjs.com/package/my-lib)',
+        '[![license](https://img.shields.io/github/license/user/repo)](https://github.com/user/repo/blob/main/LICENSE)',
+      ].join('\n');
+
+      const badges = parseExistingBadges(block);
+      expect(badges).toHaveLength(2);
+      expect(badges[0].label).toBe('npm');
+      expect(badges[0].imageUrl).toBe('https://img.shields.io/npm/v/my-lib');
+      expect(badges[0].linkUrl).toBe('https://www.npmjs.com/package/my-lib');
+      expect(badges[1].label).toBe('license');
+    });
+
+    it('returns empty array for empty block', () => {
+      expect(parseExistingBadges('')).toHaveLength(0);
+      expect(parseExistingBadges('  ')).toHaveLength(0);
+    });
+
+    it('skips non-badge lines', () => {
+      const block = [
+        '[![npm](https://img.shields.io/npm/v/my-lib)](https://www.npmjs.com/package/my-lib)',
+        '',
+        'Some random text',
+        '[![license](https://img.shields.io/github/license/user/repo)](https://github.com/user/repo)',
+      ].join('\n');
+
+      const badges = parseExistingBadges(block);
+      expect(badges).toHaveLength(2);
+    });
+
+    it('preserves raw badge line text', () => {
+      const line = '[![custom badge](https://example.com/badge.svg)](https://example.com)';
+      const badges = parseExistingBadges(line);
+      expect(badges).toHaveLength(1);
+      expect(badges[0].raw).toBe(line);
     });
   });
 });

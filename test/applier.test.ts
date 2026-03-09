@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { resolve } from 'node:path';
 import { mkdirSync, writeFileSync, rmSync, readFileSync, existsSync, cpSync } from 'node:fs';
-import { applyBadges, checkBadges, doctorBadges, repairBadges } from '../src/applier.js';
+import { applyBadges, checkBadges, doctorBadges, repairBadges, mergeBadgesWithExisting } from '../src/applier.js';
 import type { Config } from '../src/types.js';
 import { DEFAULT_CONFIG } from '../src/types.js';
 
@@ -344,6 +344,140 @@ describe('applier', () => {
       } finally {
         vi.unstubAllGlobals();
       }
+    });
+  });
+
+  describe('badge preservation (Conservative by Default)', () => {
+    it('preserves custom badges when applying auto-detected badges', async () => {
+      const cwd = copyFixture('javascript-project');
+      const { execSync } = await import('node:child_process');
+      execSync('git init', { cwd, stdio: 'pipe' });
+      execSync('git remote add origin https://github.com/testuser/my-awesome-lib.git', { cwd, stdio: 'pipe' });
+
+      const config = makeConfig();
+
+      // First apply to get auto-detected badges
+      await applyBadges(cwd, config);
+
+      // Now manually add a custom badge to the block
+      const readme = readFileSync(resolve(cwd, 'README.md'), 'utf-8');
+      const customBadge = '[![custom](https://example.com/badge.svg)](https://example.com)';
+      const updatedReadme = readme.replace(
+        '<!-- BADGES:END -->',
+        `${customBadge}\n<!-- BADGES:END -->`,
+      );
+      writeFileSync(resolve(cwd, 'README.md'), updatedReadme);
+
+      // Apply again — custom badge should be preserved
+      await applyBadges(cwd, config);
+
+      const finalReadme = readFileSync(resolve(cwd, 'README.md'), 'utf-8');
+      expect(finalReadme).toContain(customBadge);
+      expect(finalReadme).toContain('img.shields.io/npm/v/my-awesome-lib');
+    });
+
+    it('preserves custom badges during repair', async () => {
+      const cwd = copyFixture('javascript-project');
+      const { execSync } = await import('node:child_process');
+      execSync('git init', { cwd, stdio: 'pipe' });
+      execSync('git remote add origin https://github.com/testuser/my-awesome-lib.git', { cwd, stdio: 'pipe' });
+
+      const config = makeConfig();
+
+      // Apply auto-detected badges
+      await applyBadges(cwd, config);
+
+      // Add a custom badge
+      const readme = readFileSync(resolve(cwd, 'README.md'), 'utf-8');
+      const customBadge = '[![custom](https://example.com/badge.svg)](https://example.com)';
+      const updatedReadme = readme.replace(
+        '<!-- BADGES:END -->',
+        `${customBadge}\n<!-- BADGES:END -->`,
+      );
+      writeFileSync(resolve(cwd, 'README.md'), updatedReadme);
+
+      // Mock fetch to return broken for some badges (triggers repair)
+      const mockFetch = vi.fn().mockResolvedValue({ ok: false });
+      vi.stubGlobal('fetch', mockFetch);
+
+      try {
+        await repairBadges(cwd, config, { timeout: 1000 });
+        const finalReadme = readFileSync(resolve(cwd, 'README.md'), 'utf-8');
+        expect(finalReadme).toContain(customBadge);
+      } finally {
+        vi.unstubAllGlobals();
+      }
+    });
+
+    it('check includes custom badges in expected output', async () => {
+      const cwd = copyFixture('javascript-project');
+      const { execSync } = await import('node:child_process');
+      execSync('git init', { cwd, stdio: 'pipe' });
+      execSync('git remote add origin https://github.com/testuser/my-awesome-lib.git', { cwd, stdio: 'pipe' });
+
+      const config = makeConfig();
+
+      // Apply, then add custom badge, then apply again to normalize
+      await applyBadges(cwd, config);
+      const readme = readFileSync(resolve(cwd, 'README.md'), 'utf-8');
+      const customBadge = '[![custom](https://example.com/badge.svg)](https://example.com)';
+      const updatedReadme = readme.replace(
+        '<!-- BADGES:END -->',
+        `${customBadge}\n<!-- BADGES:END -->`,
+      );
+      writeFileSync(resolve(cwd, 'README.md'), updatedReadme);
+
+      // Apply again — normalizes the block with custom badge preserved
+      await applyBadges(cwd, config);
+
+      // Check should report inSync=true since block matches expected (auto + custom)
+      const result = await checkBadges(cwd, config);
+      expect(result.inSync).toBe(true);
+    });
+  });
+
+  describe('mergeBadgesWithExisting', () => {
+    it('returns formatted when current block is empty', () => {
+      const result = mergeBadgesWithExisting('badge1\nbadge2', '', []);
+      expect(result).toBe('badge1\nbadge2');
+    });
+
+    it('returns formatted when no existing badges match pattern', () => {
+      const result = mergeBadgesWithExisting('badge1', 'not a badge line', []);
+      expect(result).toBe('badge1');
+    });
+
+    it('preserves custom badges not in auto-detected set', () => {
+      const autoDetected = [
+        { type: 'npm-version', group: 'distribution' as const, label: 'npm', imageUrl: 'https://img.shields.io/npm/v/pkg', linkUrl: 'https://npmjs.com/package/pkg' },
+      ];
+      const formatted = '[![npm](https://img.shields.io/npm/v/pkg)](https://npmjs.com/package/pkg)';
+      const current = [
+        '[![npm](https://img.shields.io/npm/v/pkg)](https://npmjs.com/package/pkg)',
+        '[![custom](https://example.com/badge.svg)](https://example.com)',
+      ].join('\n');
+
+      const result = mergeBadgesWithExisting(formatted, current, autoDetected);
+      expect(result).toContain('[![npm](https://img.shields.io/npm/v/pkg)](https://npmjs.com/package/pkg)');
+      expect(result).toContain('[![custom](https://example.com/badge.svg)](https://example.com)');
+    });
+
+    it('does not duplicate auto-detected badges', () => {
+      const autoDetected = [
+        { type: 'npm-version', group: 'distribution' as const, label: 'npm', imageUrl: 'https://img.shields.io/npm/v/pkg', linkUrl: 'https://npmjs.com/package/pkg' },
+      ];
+      const formatted = '[![npm](https://img.shields.io/npm/v/pkg)](https://npmjs.com/package/pkg)';
+      const current = '[![npm](https://img.shields.io/npm/v/pkg)](https://npmjs.com/package/pkg)';
+
+      const result = mergeBadgesWithExisting(formatted, current, autoDetected);
+      const npmCount = (result.match(/img\.shields\.io\/npm\/v\/pkg/g) ?? []).length;
+      expect(npmCount).toBe(1);
+    });
+
+    it('handles empty formatted with custom badges only', () => {
+      const current = '[![custom](https://example.com/badge.svg)](https://example.com)';
+      const result = mergeBadgesWithExisting('', current, []);
+      expect(result).toBe('[![custom](https://example.com/badge.svg)](https://example.com)');
     });
   });
 });
