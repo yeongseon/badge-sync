@@ -15,7 +15,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test:e2e": "./scripts/e2e-repos.sh",
+    "test:e2e:quick": "./scripts/e2e-repos.sh --quick"
   },
   "keywords": [
     "badge",
