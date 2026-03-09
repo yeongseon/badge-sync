@@ -213,12 +213,20 @@ Detected issues include:
 
 badge-sync can automatically repair common badge issues when possible.
 
-Examples include:
+**Safe to auto-fix:**
 
-- fixing incorrect workflow badge URLs
-- updating repository references
-- removing duplicated badges
-- regenerating badge URLs
+- fixing incorrect workflow badge URLs (workflow file renamed)
+- updating repository references (owner/repo changed)
+- removing exact duplicate badges (same type and URL)
+- regenerating badge URLs from current metadata
+
+**Never auto-fixed (reported as suggestions only):**
+
+- deleting badges — even if broken, the user may want to keep or fix them manually
+- changing badge providers — if a user chose a non-default provider, that choice is respected
+- changing badge semantics — e.g., switching a version badge to a downloads badge
+
+The `repair` command follows the Conservative by Default principle: it merges updated badges with existing content rather than replacing the entire badge block. User-added custom badges that are not auto-detected are preserved.
 
 ### 7.7 README Badge Block Management
 

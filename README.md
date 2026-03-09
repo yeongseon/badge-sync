@@ -1,5 +1,7 @@
 # badge-sync
 
+> Badges should be simple signals, not maintenance burdens.
+
 Keep your README badges clean, valid, and consistent.
 
 badge-sync automatically detects, validates, and synchronizes README badges based on repository metadata.
@@ -27,6 +29,7 @@ badge-sync automatically:
 
 - **Zero-config** — run `badge-sync apply` and it works
 - **Deterministic** — same repository state always produces the same badges
+- **Conservative** — never removes badges you added, only updates stale ones
 - **CI-friendly** — `badge-sync check` exits with code `1` on mismatch
 - **Offline-first** — `apply` and `check` require no network access
 - **Safe** — only modifies content inside `<!-- BADGES:START -->` / `<!-- BADGES:END -->` markers
@@ -119,8 +122,8 @@ Add to your GitHub Actions workflow:
 
 ## Roadmap
 
-- [ ] Core badge detection and generation
-- [ ] `apply`, `check`, `doctor`, `repair` commands
+- [x] Core badge detection and generation
+- [x] `apply`, `check`, `doctor`, `repair` commands
 - [ ] Additional ecosystems (Go, Java)
 - [ ] Coverage badge detection
 - [ ] GitHub Action distribution
