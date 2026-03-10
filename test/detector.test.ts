@@ -240,6 +240,18 @@ describe("detector", () => {
 			expect(meta.packageNames.javascript).toBeUndefined();
 		});
 
+		it("handles package.json with valid JSON but non-object value", async () => {
+			const cwd = resolve(TMP_DETECTOR, "non-object-json");
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(resolve(cwd, "package.json"), '"just a string"');
+
+			const meta = await detectMetadata(cwd);
+			// File exists so ecosystem is detected, but packageName is null since content is not an object
+			expect(meta.ecosystem).toContain("javascript");
+			expect(meta.packageName).toBeNull();
+			expect(meta.hasCoverage).toBe(false);
+		});
+
 		it("auto-detects README filename variants", () => {
 			const cwd = resolve(TMP_DETECTOR, "readme-variants");
 			mkdirSync(cwd, { recursive: true });
@@ -280,6 +292,15 @@ describe("detector", () => {
 			expect(meta.packageName).toBeNull();
 		});
 
+		it("handles non-object JSON in package.json gracefully", async () => {
+			const cwd = resolve(TMP_DETECTOR, "non-object-json");
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(resolve(cwd, "package.json"), '"hello"');
+			const meta = await detectMetadata(cwd);
+			expect(meta.ecosystem).toContain("javascript");
+			expect(meta.packageName).toBeNull();
+		});
+
 		it("parses owner and repo from SSH git remote", async () => {
 			const cwd = copyFixture("javascript-project");
 			const { execSync } = await import("node:child_process");
@@ -291,6 +312,18 @@ describe("detector", () => {
 			const meta = await detectMetadata(cwd);
 			expect(meta.owner).toBe("sshowner");
 			expect(meta.repo).toBe("ssh-repo");
+		});
+
+		it("returns null owner and repo when git remote origin is missing", async () => {
+			const cwd = resolve(TMP_DETECTOR, "git-no-remote");
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(resolve(cwd, "package.json"), JSON.stringify({ name: "git-no-remote" }));
+			const { execSync } = await import("node:child_process");
+			execSync("git init", { cwd, stdio: "pipe" });
+
+			const meta = await detectMetadata(cwd);
+			expect(meta.owner).toBeNull();
+			expect(meta.repo).toBeNull();
 		});
 
 		it("populates packageNames per ecosystem", async () => {
@@ -492,6 +525,55 @@ describe("detector", () => {
 			const cwd = resolve(TMP_DETECTOR, "coverage-python");
 			mkdirSync(cwd, { recursive: true });
 			writeFileSync(resolve(cwd, ".coveragerc"), "[run]\nbranch = True\n");
+
+			const meta = await detectMetadata(cwd);
+			expect(meta.hasCoverage).toBe(true);
+			expect(meta.coverageService).toBeNull();
+		});
+
+		it("detects coverage from setup.cfg pytest addopts", async () => {
+			const cwd = resolve(TMP_DETECTOR, "coverage-setup-cfg");
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(resolve(cwd, "setup.cfg"), "[tool:pytest]\naddopts = --cov=mypackage\n");
+
+			const meta = await detectMetadata(cwd);
+			expect(meta.hasCoverage).toBe(true);
+			expect(meta.coverageService).toBeNull();
+		});
+
+		it("detects coverage from c8 config in package.json", async () => {
+			const cwd = resolve(TMP_DETECTOR, "coverage-c8-packagejson");
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(
+				resolve(cwd, "package.json"),
+				JSON.stringify({ name: "c8-pkg", c8: { all: true, reporter: ["text"] } }),
+			);
+
+			const meta = await detectMetadata(cwd);
+			expect(meta.hasCoverage).toBe(true);
+			expect(meta.coverageService).toBeNull();
+		});
+
+		it("detects coverage from pyproject.toml pytest ini_options with --cov", async () => {
+			const cwd = resolve(TMP_DETECTOR, "coverage-pyproject-pytest");
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(
+				resolve(cwd, "pyproject.toml"),
+				"[project]\nname = \"my-pkg\"\n\n[tool.pytest.ini_options]\naddopts = \"--cov=my_pkg\"\n",
+			);
+
+			const meta = await detectMetadata(cwd);
+			expect(meta.hasCoverage).toBe(true);
+			expect(meta.coverageService).toBeNull();
+		});
+
+		it("detects coverage from pytest.ini with --cov", async () => {
+			const cwd = resolve(TMP_DETECTOR, "coverage-pytestini");
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(
+				resolve(cwd, "pytest.ini"),
+				"[pytest]\naddopts = --cov=mypackage\n",
+			);
 
 			const meta = await detectMetadata(cwd);
 			expect(meta.hasCoverage).toBe(true);

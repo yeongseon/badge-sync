@@ -242,6 +242,27 @@ describe('cli action handlers', () => {
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
+    it('counts multiple line differences correctly', async () => {
+      mockCheckBadges.mockResolvedValue({
+        inSync: false,
+        expected: 'line1\nline2\nline3',
+        current: 'lineA\nline2',
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'check']);
+      } catch {
+        // process.exit(1) throws due to mock
+      }
+
+      expect(writeSpy).toHaveBeenCalledWith('Badges are out of sync\n\n');
+      expect(writeSpy).toHaveBeenCalledWith('Detected 2 difference(s)\n\n');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+
     it('passes --package option to checkBadges', async () => {
       mockCheckBadges.mockResolvedValue({
         inSync: true,
@@ -310,6 +331,21 @@ describe('cli action handlers', () => {
       expect(writeSpy).toHaveBeenCalledWith('Detected badges:\n');
       expect(mockListBadges).toHaveBeenCalled();
     });
+
+    it('passes --readme option to config for list', async () => {
+      mockListBadges.mockResolvedValue({
+        isMonorepo: false,
+        packages: [],
+        badges: [testBadge],
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+      await program.parseAsync(['node', 'badge-sync', 'list', '--readme', 'CUSTOM.md']);
+
+      const calledConfig = mockListBadges.mock.calls[0][1] as Config;
+      expect(calledConfig.readme).toBe('CUSTOM.md');
+    });
   });
 
   describe('doctor command', () => {
@@ -372,6 +408,25 @@ describe('cli action handlers', () => {
       }
 
       expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining('⚠'));
+    });
+
+    it('uses default timeout of 5000 when --timeout is not specified', async () => {
+      mockDoctorBadges.mockResolvedValue({ issues: [] });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'doctor']);
+      } catch {
+        // process.exit(0) throws due to mock
+      }
+
+      expect(mockDoctorBadges).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Object),
+        expect.objectContaining({ timeout: 5000 }),
+      );
     });
   });
 
@@ -464,6 +519,29 @@ describe('cli action handlers', () => {
 
       const calledConfig = mockRepairBadges.mock.calls[0][1] as Config;
       expect(calledConfig.readme).toBe('CUSTOM.md');
+    });
+
+    it('uses default timeout of 5000 when --timeout is not specified', async () => {
+      mockRepairBadges.mockResolvedValue({
+        fixed: [],
+        remaining: [],
+        applied: false,
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'repair']);
+      } catch {
+        // process.exit(0) throws due to mock
+      }
+
+      expect(mockRepairBadges).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Object),
+        expect.objectContaining({ timeout: 5000 }),
+      );
     });
   });
 

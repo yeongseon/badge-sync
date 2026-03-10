@@ -388,6 +388,23 @@ describe("applier", () => {
 				vi.unstubAllGlobals();
 			}
 		});
+
+		it("throws when README exists but has no badge markers", async () => {
+			const cwd = resolve(TMP, "doctor-no-markers");
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(
+				resolve(cwd, "package.json"),
+				JSON.stringify({ name: "test-pkg" }),
+			);
+			writeFileSync(
+				resolve(cwd, "README.md"),
+				"# My Project\n\nNo badge markers here.\n",
+			);
+
+			await expect(
+				doctorBadges(cwd, makeConfig(), { timeout: 1000 }),
+			).rejects.toThrow("Badge block markers not found");
+		});
 	});
 
 	describe("repairBadges", () => {
@@ -508,6 +525,23 @@ describe("applier", () => {
 			} finally {
 				vi.unstubAllGlobals();
 			}
+		});
+
+		it("throws when README has no badge markers", async () => {
+			const cwd = resolve(TMP, "repair-no-markers");
+			mkdirSync(cwd, { recursive: true });
+			writeFileSync(
+				resolve(cwd, "package.json"),
+				JSON.stringify({ name: "test-pkg" }),
+			);
+			writeFileSync(
+				resolve(cwd, "README.md"),
+				"# My Project\n\nNo badge markers here.\n",
+			);
+
+			await expect(
+				repairBadges(cwd, makeConfig(), { timeout: 1000 }),
+			).rejects.toThrow("Badge block markers not found");
 		});
 	});
 
@@ -987,6 +1021,30 @@ describe("applier", () => {
 
 			const config = makeConfig();
 			await expect(buildDryRunReport(cwd, config)).rejects.toThrow();
+		});
+
+		it("categorizes badges as updated when label or linkUrl differs", async () => {
+			const cwd = copyFixture("javascript-project");
+			const { execSync } = await import("node:child_process");
+			execSync("git init", { cwd, stdio: "pipe" });
+			execSync(
+				"git remote add origin https://github.com/testuser/my-awesome-lib.git",
+				{ cwd, stdio: "pipe" },
+			);
+
+			const config = makeConfig();
+			await applyBadges(cwd, config);
+
+			// Modify badge label in README to simulate a changed badge
+			const readmePath = resolve(cwd, "README.md");
+			const readme = readFileSync(readmePath, "utf-8");
+			const modified = readme.replace("npm version", "NPM VERSION MODIFIED");
+			writeFileSync(readmePath, modified, "utf-8");
+
+			const report = await buildDryRunReport(cwd, config);
+
+			expect(report.updatedCount).toBeGreaterThan(0);
+			expect(report.entries.some((e) => e.marker === "~")).toBe(true);
 		});
 	});
 });
