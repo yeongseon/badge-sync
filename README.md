@@ -42,16 +42,19 @@ Applied 4 badges
 
 ## Quick Start
 
-```bash
-# Run directly — no install required
-npx badge-sync apply
+**New project? No badges yet?** One command sets everything up:
 
-# Or install globally
-npm install -g badge-sync
-badge-sync apply
+```bash
+npx badge-sync init
 ```
 
-That's it. badge-sync reads your `package.json`, `pyproject.toml`, or `Cargo.toml`, detects your CI workflows and license, and generates the right badges in the right order.
+This detects your project metadata, creates badge markers in your README, and generates all the right badges automatically. No config needed.
+
+**Already have badges?** Keep them in sync:
+
+```bash
+npx badge-sync apply
+```
 
 ## Features
 
@@ -88,10 +91,15 @@ That's it. badge-sync reads your `package.json`, `pyproject.toml`, or `Cargo.tom
 
 ### `badge-sync init`
 
-Set up badge markers in your README:
+First-time setup — works in two scenarios:
+
+#### New project (no badges yet)
+
+Detects your project, creates a README if needed, inserts badge markers, and generates badges — all in one step:
 
 ```bash
 $ badge-sync init
+Created README.md
 Inserted badge markers
 Applied 4 badges
   [distribution] npm version
@@ -99,6 +107,24 @@ Applied 4 badges
   [build] ci workflow
   [metadata] license
 ```
+
+#### Existing project (badges already in README)
+
+Already have badges scattered in your README? `init` wraps them in badge markers, adds any missing ones, and removes duplicates:
+
+```bash
+$ badge-sync init
+Inserted badge markers
+Migrated 3 existing badges
+Applied 5 badges (2 new)
+  [distribution] npm version        # kept
+  [runtime] node version            # new
+  [build] ci workflow               # kept
+  [quality] coverage                # kept
+  [metadata] license                # new
+```
+
+Either way, running `init` on a project that's already set up is safe — it won't create duplicates.
 
 ### `badge-sync apply`
 
@@ -181,7 +207,7 @@ Fixed 2 issue(s)
 | ------ | -------- | ----------- |
 | `--readme <path>` | all | README file path (default: `README.md`) |
 | `--config <path>` | all | Config file path |
-| `--dry-run` | `apply`, `repair` | Preview changes without writing |
+| `--dry-run` | `apply`, `init`, `repair` | Preview changes without writing |
 | `--timeout <ms>` | `doctor`, `repair` | HTTP timeout per URL (default: 5000) |
 | `--package <name>` | `apply`, `check` | Target a specific monorepo package |
 | `--markers-only` | `init` | Insert markers without applying badges |
