@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { MockInstance } from 'vitest';
 import type { Badge, Config, ValidationResult } from '../src/types.js';
 
 // Mock all dependencies BEFORE importing cli
@@ -47,8 +48,8 @@ const testBadge: Badge = {
 };
 
 describe('cli action handlers', () => {
-  let writeSpy: ReturnType<typeof vi.spyOn>;
-  let exitSpy: ReturnType<typeof vi.spyOn>;
+  let writeSpy: MockInstance<typeof process.stdout.write>;
+  let exitSpy: MockInstance<typeof process.exit>;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -596,6 +597,25 @@ describe('cli action handlers', () => {
 
       const calledOptions = mockInitBadges.mock.calls[0][2] as { markersOnly?: boolean };
       expect(calledOptions.markersOnly).toBe(true);
+    });
+
+    it('passes --dry-run option to initBadges', async () => {
+      mockInitBadges.mockResolvedValue({
+        readmeCreated: false,
+        markersInserted: false,
+        markersAlreadyExist: false,
+        badgesApplied: 2,
+        badges: [testBadge, testBadge],
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+      await program.parseAsync(['node', 'badge-sync', 'init', '--dry-run']);
+
+      const calledOptions = mockInitBadges.mock.calls[0][2] as { dryRun?: boolean };
+      expect(calledOptions.dryRun).toBe(true);
+      expect(writeSpy).toHaveBeenCalledWith('Dry run - no changes written\n\n');
+      expect(writeSpy).toHaveBeenCalledWith('Would apply 2 badge(s):\n');
     });
   });
 

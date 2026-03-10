@@ -704,6 +704,133 @@ describe("applier", () => {
 				readme.startsWith("<!-- BADGES:START -->\n<!-- BADGES:END -->\n\n"),
 			).toBe(true);
 		});
+
+		it("does not duplicate badges when init runs on README with existing overlapping badges", async () => {
+			const cwd = resolve(TMP, "init-overlap-test");
+			mkdirSync(cwd, { recursive: true });
+
+			writeFileSync(
+				resolve(cwd, "pyproject.toml"),
+				'[project]\nname = "my-python-tool"\nrequires-python = ">=3.9"\n',
+				"utf-8",
+			);
+
+			const { execSync } = await import("node:child_process");
+			execSync("git init", { cwd, stdio: "pipe" });
+			execSync(
+				"git remote add origin https://github.com/testuser/my-python-tool.git",
+				{ cwd, stdio: "pipe" },
+			);
+
+			writeFileSync(resolve(cwd, "LICENSE"), "MIT License\n", "utf-8");
+
+			const existingReadme = [
+				"# my-python-tool",
+				"",
+				'[![PyPI](https://img.shields.io/pypi/v/my-python-tool.svg)](https://pypi.org/project/my-python-tool/)',
+				'[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)',
+				"",
+				"A great Python tool.",
+				"",
+			].join("\n");
+			writeFileSync(resolve(cwd, "README.md"), existingReadme, "utf-8");
+
+			const result = await initBadges(cwd, makeConfig());
+			expect(result.badgesApplied).toBeGreaterThanOrEqual(0);
+
+			const readme = readFileSync(resolve(cwd, "README.md"), "utf-8");
+
+			const badgeLines = readme.split("\n").filter(
+				(line) => line.includes("![") && /licen[cs]e/i.test(line),
+			);
+			expect(badgeLines.length).toBeLessThanOrEqual(1);
+
+			const pypiLines = readme
+				.split("\n")
+				.filter((line) => line.includes("![") && line.includes("/pypi/v/"));
+			expect(pypiLines.length).toBeLessThanOrEqual(1);
+
+			expect(readme).toContain("<!-- BADGES:START -->");
+			expect(readme).toContain("<!-- BADGES:END -->");
+		});
+
+		it("preserves truly custom badges (pre-commit, docs) during init with overlap", async () => {
+			const cwd = resolve(TMP, "init-preserve-custom");
+			mkdirSync(cwd, { recursive: true });
+
+			writeFileSync(
+				resolve(cwd, "pyproject.toml"),
+				'[project]\nname = "my-tool"\nrequires-python = ">=3.9"\n',
+				"utf-8",
+			);
+
+			const { execSync } = await import("node:child_process");
+			execSync("git init", { cwd, stdio: "pipe" });
+			execSync("git remote add origin https://github.com/testuser/my-tool.git", {
+				cwd,
+				stdio: "pipe",
+			});
+
+			writeFileSync(resolve(cwd, "LICENSE"), "MIT License\n", "utf-8");
+
+			const existingReadme = [
+				"# my-tool",
+				"",
+				'[![PyPI](https://img.shields.io/pypi/v/my-tool.svg)](https://pypi.org/project/my-tool/)',
+				'[![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit)](https://pre-commit.com/)',
+				'[![Docs](https://img.shields.io/badge/docs-gh--pages-blue)](https://testuser.github.io/my-tool/)',
+				'[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)',
+				"",
+				"A great tool.",
+				"",
+			].join("\n");
+			writeFileSync(resolve(cwd, "README.md"), existingReadme, "utf-8");
+
+			await initBadges(cwd, makeConfig());
+
+			const readme = readFileSync(resolve(cwd, "README.md"), "utf-8");
+
+			expect(readme).toContain("pre--commit-enabled-brightgreen");
+			expect(readme).toContain("docs-gh--pages-blue");
+
+			const pypiLines = readme
+				.split("\n")
+				.filter((line) => line.includes("![") && line.includes("/pypi/v/"));
+			expect(pypiLines.length).toBeLessThanOrEqual(1);
+		});
+
+		it("supports --dry-run option without modifying files", async () => {
+			const cwd = resolve(TMP, "init-dry-run");
+			mkdirSync(cwd, { recursive: true });
+
+			writeFileSync(
+				resolve(cwd, "package.json"),
+				JSON.stringify({ name: "test-pkg", version: "1.0.0" }),
+				"utf-8",
+			);
+
+			const { execSync } = await import("node:child_process");
+			execSync("git init", { cwd, stdio: "pipe" });
+			execSync("git remote add origin https://github.com/testuser/test-pkg.git", {
+				cwd,
+				stdio: "pipe",
+			});
+
+			writeFileSync(resolve(cwd, "LICENSE"), "MIT License\n", "utf-8");
+
+			const existingReadme = "# test-pkg\n\nA test package.\n";
+			writeFileSync(resolve(cwd, "README.md"), existingReadme, "utf-8");
+
+			const result = await initBadges(cwd, makeConfig(), { dryRun: true });
+
+			const readme = readFileSync(resolve(cwd, "README.md"), "utf-8");
+			expect(readme).toBe(existingReadme);
+
+			expect(result.badgesApplied).toBeGreaterThan(0);
+			expect(result.badges.length).toBeGreaterThan(0);
+			expect(result.markersInserted).toBe(false);
+			expect(result.readmeCreated).toBe(false);
+		});
 	});
 
 	describe("badge preservation (Conservative by Default)", () => {

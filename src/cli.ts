@@ -188,16 +188,30 @@ export function createProgram(): Command {
     .option('--readme <path>', 'README file path')
     .option('--config <path>', 'Config file path')
     .option('--markers-only', 'Only insert badge markers without applying badges', false)
-    .action(async (opts: { readme?: string; config?: string; markersOnly?: boolean }) => {
+    .option('--dry-run', 'Preview changes without writing anything', false)
+    .action(async (opts: { readme?: string; config?: string; markersOnly?: boolean; dryRun?: boolean }) => {
       const cwd = process.cwd();
       const config = await loadConfig(cwd, opts.config);
       if (opts.readme) config.readme = opts.readme;
 
-      const result = await initBadges(cwd, config, { markersOnly: opts.markersOnly });
+      const result = await initBadges(cwd, config, { markersOnly: opts.markersOnly, dryRun: opts.dryRun });
 
       if (result.markersAlreadyExist) {
         process.stdout.write('Badge markers already exist in README\n');
         process.stdout.write('Run `badge-sync apply` to update badges\n');
+        return;
+      }
+
+      if (opts.dryRun) {
+        process.stdout.write('Dry run - no changes written\n\n');
+        if (result.badgesApplied > 0) {
+          process.stdout.write(`Would apply ${result.badgesApplied} badge(s):\n`);
+          for (const badge of result.badges) {
+            process.stdout.write(`  [${badge.group}] ${badge.label}\n`);
+          }
+        } else {
+          process.stdout.write('No badges detected\n');
+        }
         return;
       }
 

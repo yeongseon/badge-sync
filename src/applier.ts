@@ -61,6 +61,21 @@ export interface InitResult {
 	badges: Badge[];
 }
 
+/**
+ * Filter badges by config include/exclude rules.
+ * Matches the filtering logic used in formatBadges.
+ */
+function applyBadgeFilters(badges: Badge[], config: Config): Badge[] {
+	const exclude = config.badges.exclude ?? [];
+	const include = config.badges.include ?? [];
+	return badges.filter((badge) => {
+		if (include.length > 0 && include.includes(badge.type)) {
+			return true;
+		}
+		return !exclude.includes(badge.type);
+	});
+}
+
 function resolveReadmePath(
 	cwd: string,
 	config: Config,
@@ -299,12 +314,25 @@ export async function repairBadges(
 export async function initBadges(
 	cwd: string,
 	config: Config,
-	options: { markersOnly?: boolean } = {},
+	options: { markersOnly?: boolean; dryRun?: boolean } = {},
 ): Promise<InitResult> {
 	const readmePath = resolveReadmePath(cwd, config);
 	let readmeCreated = false;
 
 	if (!existsSync(readmePath)) {
+		if (options.dryRun) {
+			// In dry-run mode, detect badges without creating files
+			const metadata = await detectMetadata(cwd);
+			const badges = resolveBadges(metadata);
+			const filtered = applyBadgeFilters(badges, config);
+			return {
+				readmeCreated: false,
+				markersInserted: false,
+				markersAlreadyExist: false,
+				badgesApplied: filtered.length,
+				badges: filtered,
+			};
+		}
 		const projectName = basename(cwd) || "project";
 		await writeFile(readmePath, `# ${projectName}\n\n`, "utf-8");
 		readmeCreated = true;
@@ -322,7 +350,9 @@ export async function initBadges(
 	}
 
 	const updatedReadme = insertBadgeMarkers(content);
-	await writeFile(readmePath, updatedReadme, "utf-8");
+	if (!options.dryRun) {
+		await writeFile(readmePath, updatedReadme, "utf-8");
+	}
 
 	if (options.markersOnly) {
 		return {
@@ -334,6 +364,18 @@ export async function initBadges(
 		};
 	}
 
+	if (options.dryRun) {
+		const metadata = await detectMetadata(cwd);
+		const badges = resolveBadges(metadata);
+		const filtered = applyBadgeFilters(badges, config);
+		return {
+			readmeCreated: false,
+			markersInserted: false,
+			markersAlreadyExist: false,
+			badgesApplied: filtered.length,
+			badges: filtered,
+		};
+	}
 	const applyResult = await applyBadges(cwd, config);
 	return {
 		readmeCreated,
