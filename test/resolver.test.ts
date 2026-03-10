@@ -385,6 +385,50 @@ describe('inferBadgeType', () => {
     const result = inferBadgeType('https://github.com/user/repo/actions/workflows/ci.yaml/badge.svg', '');
     expect(result).toBe('github-actions-ci');
   });
+
+  it('returns license for custom shields.io license badge (img.shields.io/badge/License-MIT-...)', () => {
+    const result = inferBadgeType('https://img.shields.io/badge/License-MIT-yellow.svg', 'LICENSE');
+    expect(result).toBe('license');
+  });
+
+  it('returns license for custom shields.io license badge with case variation', () => {
+    const result = inferBadgeType('https://img.shields.io/badge/license-Apache_2.0-blue.svg', '');
+    expect(result).toBe('license');
+  });
+
+  it('returns license for custom shields.io licence badge (British spelling)', () => {
+    const result = inferBadgeType('https://img.shields.io/badge/Licence-GPL-green', '');
+    expect(result).toBe('license');
+  });
+
+  it('returns license when linkUrl points to LICENSE file', () => {
+    const result = inferBadgeType('https://img.shields.io/badge/some-badge-red', '/LICENSE');
+    expect(result).toBe('license');
+  });
+
+  it('returns license when linkUrl points to LICENSE.md file', () => {
+    const result = inferBadgeType(
+      'https://img.shields.io/badge/some-badge-red',
+      'https://github.com/user/repo/blob/main/LICENSE.md',
+    );
+    expect(result).toBe('license');
+  });
+
+  it('does NOT return license for non-license custom shields.io badge', () => {
+    const result = inferBadgeType(
+      'https://img.shields.io/badge/pre--commit-enabled-brightgreen',
+      'https://pre-commit.com/',
+    );
+    expect(result).toBeNull();
+  });
+
+  it('does NOT return license for docs custom shields.io badge', () => {
+    const result = inferBadgeType(
+      'https://img.shields.io/badge/docs-gh--pages-blue',
+      'https://example.github.io/project/',
+    );
+    expect(result).toBeNull();
+  });
 });
 
 describe('inferBadgeGroup', () => {
@@ -443,4 +487,3 @@ describe('inferBadgeGroup', () => {
     expect(result).toBe('social');
   });
 });
-

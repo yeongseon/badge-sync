@@ -160,6 +160,14 @@ export function inferBadgeType(imageUrl: string, linkUrl: string): string | null
   if (imageUrl.includes('img.shields.io/github/stars/')) {
     return 'stars';
   }
+  // Custom shields.io badge: img.shields.io/badge/License-...
+  if (/img\.shields\.io\/badge\/licen[cs]e/i.test(imageUrl)) {
+    return 'license';
+  }
+  // linkUrl pointing to LICENSE file is a strong license signal
+  if (/\/LICENSE(\..+)?$/i.test(linkUrl)) {
+    return 'license';
+  }
   if (linkUrl.includes('/actions/workflows/')) {
     const workflow = linkUrl.match(/\/actions\/workflows\/([^/?#]+)/i)?.[1];
     const workflowName = workflow
