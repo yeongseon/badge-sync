@@ -8,6 +8,10 @@
 
 Automatically detect, generate, validate, and repair README badges from your repository metadata.
 
+<p align="center">
+  <img src="./assets/demo.svg" alt="badge-sync demo" width="800">
+</p>
+
 ## Before / After
 
 **Before** — stale badges after renaming your repo:
