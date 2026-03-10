@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-03-10
+
+### Fixed
+
+- `init` no longer creates duplicate badges when run on READMEs with existing custom shields.io license badges (e.g., `img.shields.io/badge/License-MIT-yellow.svg`)
+- `inferBadgeType` now recognizes custom shields.io license URL patterns and `LICENSE` file link URLs
+
+### Added
+
+- `--dry-run` option for `init` command — preview what `init` would do without writing files
+- `applyBadgeFilters` helper to share badge include/exclude filtering logic between `apply` and `init`
+
 ## [0.1.0] - 2026-03-09
 
 ### Added
@@ -23,4 +35,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Private `package.json` handling (detects JS ecosystem, skips npm badge)
 - E2E test infrastructure validated against 24 open-source repos
 
+[0.1.1]: https://github.com/yeongseon/badge-sync/releases/tag/v0.1.1
 [0.1.0]: https://github.com/yeongseon/badge-sync/releases/tag/v0.1.0

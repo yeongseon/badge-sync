@@ -32,7 +32,7 @@ badge-sync --help
 - optional
 - default: `false`
 - prints what would change without writing any files
-- applies to `apply` and `repair` commands
+- applies to `apply`, `init`, and `repair` commands
 
 ### `--markers-only`
 
@@ -299,6 +299,11 @@ Initialize badge-sync in your project with a guided non-interactive flow.
 
 - inserts markers only
 - skips badge detection and application
+
+`--dry-run`
+
+- previews what `init` would do without writing files
+- shows detected badges, marker insertion plan, and custom badge preservation
 
 ### Output
 

@@ -111,6 +111,51 @@ All changes must pass `npm run test:coverage` with 90%+ branch coverage. The pre
 3. Run `npm test && npm run typecheck` to verify
 4. Submit a pull request with a clear description
 
+## Releasing a New Version
+
+badge-sync uses tag-triggered publishing. Pushing a `v*` tag to GitHub automatically runs CI and publishes to npm.
+
+### Steps
+
+1. Update the version in `package.json`:
+   ```bash
+   npm version patch  # or minor, major
+   ```
+2. Update `CHANGELOG.md` with the new version's changes.
+3. Commit the version bump:
+   ```bash
+   git add package.json CHANGELOG.md
+   git commit -m "chore: release v$(node -p "require('./package.json').version")"
+   ```
+4. Create and push the tag:
+   ```bash
+   git tag v$(node -p "require('./package.json').version")
+   git push origin main --tags
+   ```
+5. The `publish.yml` workflow will automatically:
+   - Run CI (typecheck + tests) on Node 20 and 22
+   - Verify the tag version matches `package.json`
+   - Publish to npm with provenance
+   - Create a GitHub Release with auto-generated notes
+
+### Requirements
+
+- `NPM_TOKEN` secret must be set in GitHub repository settings (Settings → Secrets → Actions)
+- The token must have publish permission for the `badge-sync` package
+- The tag version must exactly match `package.json` version (e.g., tag `v0.1.2` requires `"version": "0.1.2"`)
+
+### Troubleshooting
+
+- **Publish fails with 404**: Verify the `NPM_TOKEN` has publish (not read-only) scope
+- **Version mismatch error**: The tag `v*` must match `package.json` version exactly
+- **Re-publishing a failed tag**: Delete the tag locally and remotely, then recreate:
+  ```bash
+  git tag -d v0.1.1
+  git push origin --delete v0.1.1
+  git tag v0.1.1
+  git push origin v0.1.1
+  ```
+
 ## Questions?
 
 Open an issue on [GitHub](https://github.com/yeongseon/badge-sync/issues).
