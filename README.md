@@ -2,48 +2,15 @@
 
 <!-- BADGES:START -->
 [![npm version](https://img.shields.io/npm/v/badge-sync)](https://www.npmjs.com/package/badge-sync)
-[![node version](https://img.shields.io/node/v/badge-sync)](https://nodejs.org)
 [![ci workflow](https://github.com/yeongseon/badge-sync/actions/workflows/ci.yml/badge.svg)](https://github.com/yeongseon/badge-sync/actions/workflows/ci.yml)
 [![license](https://img.shields.io/github/license/yeongseon/badge-sync)](https://github.com/yeongseon/badge-sync/blob/main/LICENSE)
-[![GitHub stars](https://img.shields.io/github/stars/yeongseon/badge-sync)](https://github.com/yeongseon/badge-sync)
-[![coverage](https://codecov.io/gh/yeongseon/badge-sync/branch/main/graph/badge.svg)](https://codecov.io/gh/yeongseon/badge-sync)
 <!-- BADGES:END -->
 
-Keep your README badges clean, valid, and consistent.
+Automatically detect, generate, validate, and repair README badges from your repository metadata.
 
-> **Status**: Early-stage. Core happy path works. Real-world edge cases may need fixes.
+## Before / After
 
-## Problem
-
-README badges are widely used in open-source projects.
-
-But in practice, many repositories have:
-
-- broken badge links after renaming repos or workflows
-- outdated CI badges pointing to old services
-- incorrect repository references copied from other projects
-- inconsistent badge ordering across repositories
-
-Maintaining badges is surprisingly manual and error-prone.
-
-## Solution
-
-badge-sync is a small CLI tool that helps maintain README badges.
-
-It automatically:
-
-- detects badges relevant to your repository
-- validates badge links
-- fixes broken badge references
-- keeps badge ordering consistent
-
-```bash
-npx badge-sync apply
-```
-
-## Demo
-
-**Before** — a typical README with stale and broken badges:
+**Before** — stale badges after renaming your repo:
 
 ```md
 <!-- BADGES:START -->
@@ -53,17 +20,16 @@ npx badge-sync apply
 <!-- BADGES:END -->
 ```
 
+**After** — one command fixes everything:
+
 ```bash
-$ badge-sync doctor
-
-  ✗ Badge "Build Status" — URL returns 404
-  ✗ Badge "npm" — package name mismatch (old-name ≠ my-tool)
-  ✗ Badge "Coverage" — repository moved (old-org/old-name → my-org/my-tool)
-
-3 issues found. Run badge-sync repair to fix.
+$ npx badge-sync apply
+Applied 4 badges
+  [distribution] npm version
+  [runtime] node version
+  [build] ci workflow
+  [metadata] license
 ```
-
-**After** — `badge-sync apply`:
 
 ```md
 <!-- BADGES:START -->
@@ -74,61 +40,155 @@ $ badge-sync doctor
 <!-- BADGES:END -->
 ```
 
-Correct names. Correct URLs. Correct order. Zero manual work.
+## Quick Start
 
-## Philosophy
+```bash
+# Run directly — no install required
+npx badge-sync apply
 
-> Badges should be simple signals, not maintenance burdens.
+# Or install globally
+npm install -g badge-sync
+badge-sync apply
+```
 
-badge-sync follows a conservative design:
+That's it. badge-sync reads your `package.json`, `pyproject.toml`, or `Cargo.toml`, detects your CI workflows and license, and generates the right badges in the right order.
+
+## Features
 
 - **Zero-config** — run `badge-sync apply` and it works
-- **Deterministic** — same repository state always produces the same badges
-- **Conservative** — never removes badges you added, only updates stale ones
-- **Offline-first** — `apply` and `check` require no network access
+- **Multi-ecosystem** — JavaScript, Python, Rust
+- **Monorepo-aware** — npm workspaces, pnpm, lerna, Cargo workspaces
 - **Safe** — only modifies content inside `<!-- BADGES:START -->` / `<!-- BADGES:END -->` markers
+- **Offline** — `apply` and `check` require no network access
+- **CI-ready** — `check` exits code 1 when badges drift, failing the pipeline
+- **Repairable** — `doctor` finds broken badges, `repair` fixes them
 
-## Installation
+## How It Works
+
+1. **Detect** — Scans your project files (`package.json`, `pyproject.toml`, `Cargo.toml`, `.github/workflows/`, `LICENSE`) to collect repository metadata.
+2. **Resolve** — Maps detected metadata to badge definitions with correct URLs for your package name, repo owner, and CI workflows.
+3. **Format** — Orders badges by group (distribution → runtime → build → quality → metadata → social) and renders them as markdown.
+4. **Apply** — Replaces only the content between `<!-- BADGES:START -->` and `<!-- BADGES:END -->` markers in your README. Everything else is untouched.
+
+## Supported Badge Services
+
+| Badge | Source | Service |
+| ----- | ------ | ------- |
+| npm version | `package.json` | shields.io |
+| Node version | `package.json` `engines.node` | shields.io |
+| PyPI version | `pyproject.toml` | shields.io |
+| Python version | `pyproject.toml` | shields.io |
+| crates.io version | `Cargo.toml` | shields.io |
+| CI workflow status | `.github/workflows/*.yml` | GitHub Actions |
+| Coverage | `codecov.yml` / `coveralls` config | Codecov, Coveralls |
+| License | `LICENSE` file | shields.io |
+| GitHub stars | Git remote URL | shields.io |
+
+## CLI Usage
+
+### `badge-sync init`
+
+Set up badge markers in your README:
 
 ```bash
-npm install -g badge-sync
+$ badge-sync init
+Inserted badge markers
+Applied 4 badges
+  [distribution] npm version
+  [runtime] node version
+  [build] ci workflow
+  [metadata] license
 ```
 
-Or run directly:
+### `badge-sync apply`
+
+Generate and apply badges:
 
 ```bash
-npx badge-sync apply
+$ badge-sync apply
+Applied 4 badges
+  [distribution] npm version
+  [runtime] node version
+  [build] ci workflow
+  [metadata] license
 ```
 
-## Usage
+### `badge-sync apply --dry-run`
+
+Preview changes without writing anything — useful for CI or when you want to see what would change before committing:
 
 ```bash
-badge-sync init          # Set up markers and detect badges
-badge-sync apply         # Generate and apply badges
-badge-sync check         # Validate badges match repo state (CI)
-badge-sync doctor        # Detect broken or inconsistent badges
-badge-sync repair        # Automatically repair badge issues
+$ badge-sync apply --dry-run
+Dry run - no changes written
+
+Would apply 4 badge(s) (0 new, 2 updated, 2 unchanged):
+  ~ [distribution] npm version
+  ~ [build] ci workflow
+  = [runtime] node version
+  = [metadata] license
 ```
 
-## Supported Ecosystems
+### `badge-sync check`
 
-| Ecosystem              | Metadata Source                        | Badges Generated                  |
-| ---------------------- | -------------------------------------- | --------------------------------- |
-| JavaScript / TypeScript | `package.json`                        | npm version, Node version         |
-| Python                 | `pyproject.toml` / `requirements.txt`  | PyPI version, Python version      |
-| Rust                   | `Cargo.toml`                           | crates.io version                 |
+Validate badges match your repo state. Designed for CI — exits code 1 if badges are out of sync:
 
-Additional badges detected automatically:
+```bash
+$ badge-sync check
+Badges are in sync
 
-- **CI** — GitHub Actions workflow status
-- **License** — from `LICENSE` file
-- **Stars** — from GitHub remote
+$ badge-sync check  # when out of sync
+Badges are out of sync
+
+Detected 2 difference(s)
+
+Expected:
+[![npm version](https://img.shields.io/npm/v/my-tool)](...) ...
+
+Current:
+[![npm version](https://img.shields.io/npm/v/old-name)](...) ...
+```
+
+### `badge-sync doctor`
+
+Detect broken or inconsistent badges (makes HTTP requests):
+
+```bash
+$ badge-sync doctor
+Found 3 issue(s)
+
+  ✗ [broken-image] Badge "Build Status" image URL returns 404
+  ✗ [mismatched-repo] Badge "npm" references wrong package name
+  ⚠ [missing-workflow] Badge "deploy" workflow file not found
+```
+
+### `badge-sync repair`
+
+Automatically fix what `doctor` finds:
+
+```bash
+$ badge-sync repair
+Fixed 2 issue(s)
+  ✓ [mismatched-repo] Updated npm badge to correct package name
+  ✓ [missing-workflow] Removed badge for missing workflow
+
+1 issue(s) require manual intervention
+  ✗ [broken-image] Cannot resolve "Build Status" badge URL
+```
+
+### Common Options
+
+| Option | Commands | Description |
+| ------ | -------- | ----------- |
+| `--readme <path>` | all | README file path (default: `README.md`) |
+| `--config <path>` | all | Config file path |
+| `--dry-run` | `apply`, `repair` | Preview changes without writing |
+| `--timeout <ms>` | `doctor`, `repair` | HTTP timeout per URL (default: 5000) |
+| `--package <name>` | `apply`, `check` | Target a specific monorepo package |
+| `--markers-only` | `init` | Insert markers without applying badges |
 
 ## Configuration
 
-badge-sync works with zero configuration. All badges are detected from repository files.
-
-To customize badge ordering or exclude specific badges, create a config file:
+badge-sync works with zero configuration. To customize badge ordering or exclude specific badges:
 
 ```yaml
 # badgesync.config.yaml
@@ -144,9 +204,9 @@ badges:
     - stars
 ```
 
-Configuration priority: user config > project preset > default ordering.
-
 Supported config files: `badgesync.config.json`, `badgesync.config.yaml`, `badgesync.config.yml`
+
+Priority: user config > project preset > default ordering.
 
 ## CI Integration
 
@@ -160,7 +220,7 @@ Supported config files: `badgesync.config.json`, `badgesync.config.yaml`, `badge
 ### Using GitHub Action
 
 ```yaml
-- uses: yeongseon/badge-sync@main
+- uses: yeongseon/badge-sync@v1
   with:
     command: check
 ```
@@ -168,32 +228,16 @@ Supported config files: `badgesync.config.json`, `badgesync.config.yaml`, `badge
 With options:
 
 ```yaml
-- uses: yeongseon/badge-sync@main
+- uses: yeongseon/badge-sync@v1
   with:
     command: apply
     readme: docs/README.md
     dry-run: true
 ```
 
-`badge-sync check` exits with code `1` if badges are out of sync, failing the pipeline.
+## Contributing
 
-## Roadmap
-
-- [x] Core badge detection and generation
-- [x] `apply`, `check`, `doctor`, `repair` commands
-- [ ] Additional ecosystems (Go, Java)
-- [x] Coverage badge detection
-- [x] GitHub Action distribution
-- [x] Interactive CLI setup
-- [x] Monorepo support
-
-## Documentation
-
-- [Product Requirements](PRD.md)
-- [Architecture](ARCH.md)
-- [Design Principles](DESIGN.md)
-- [CLI Specification](docs/CLI.md)
-- [Agent Instructions](AGENTS.md)
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on adding new badge providers and contributing to badge-sync.
 
 ## License
 
