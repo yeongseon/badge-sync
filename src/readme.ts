@@ -175,38 +175,76 @@ export function parseExistingBadges(blockContent: string): ParsedBadgeLine[] {
 export function insertBadgeMarkers(readmeContent: string): string {
   const lines = readmeContent.split(/\r?\n/);
   const headingIndex = lines.findIndex((line) => line.startsWith('# '));
-  const searchStart = headingIndex >= 0 ? headingIndex + 1 : 0;
-  const { badgeLines, nonBadgeLines } = extractExistingBadgeLines(
-    lines,
-    searchStart,
-  );
-  const markerLines =
-    badgeLines.length > 0
-      ? [START_MARKER, ...badgeLines, END_MARKER]
-      : [START_MARKER, END_MARKER];
 
+  if (headingIndex > 0) {
+    const preHeadingBadges = extractExistingBadgeLines(lines, 0, headingIndex);
+    if (
+      preHeadingBadges.badgeLines.length > 0
+      && preHeadingBadges.badgeStartIndex !== undefined
+      && preHeadingBadges.badgeEndIndex !== undefined
+    ) {
+      const before = lines.slice(0, preHeadingBadges.badgeStartIndex);
+      const after = lines.slice(preHeadingBadges.badgeEndIndex);
+      return [
+        ...before,
+        START_MARKER,
+        ...preHeadingBadges.badgeLines,
+        END_MARKER,
+        ...after,
+      ].join('\n');
+    }
+  }
+
+  const searchStart = headingIndex >= 0 ? headingIndex + 1 : 0;
+  const extracted = extractExistingBadgeLines(lines, searchStart);
+  if (
+    extracted.badgeLines.length > 0
+    && extracted.badgeStartIndex !== undefined
+    && extracted.badgeEndIndex !== undefined
+  ) {
+    const before = lines.slice(0, extracted.badgeStartIndex);
+    const after = lines.slice(extracted.badgeEndIndex);
+    return [
+      ...before,
+      START_MARKER,
+      ...extracted.badgeLines,
+      END_MARKER,
+      ...after,
+    ].join('\n');
+  }
+
+  const markerLines = [START_MARKER, END_MARKER];
   if (headingIndex >= 0) {
-    const before = nonBadgeLines.slice(0, headingIndex + 1);
-    const after = nonBadgeLines.slice(headingIndex + 1);
+    const before = lines.slice(0, headingIndex + 1);
+    const after = lines.slice(headingIndex + 1);
     return [...before, '', ...markerLines, '', ...after].join('\n');
   }
 
-  return [...markerLines, '', ...nonBadgeLines].join('\n');
+  return [...markerLines, '', ...lines].join('\n');
 }
 
 /**
  * Extract existing badge lines from README lines array.
- * Scans up to 30 lines after searchStart for markdown and HTML badge patterns.
+ * Scans from searchStart to searchEnd for markdown and HTML badge patterns.
  */
 export function extractExistingBadgeLines(
   lines: string[],
   searchStart: number,
-): { badgeLines: string[]; nonBadgeLines: string[] } {
+  searchEnd: number = lines.length,
+): {
+  badgeLines: string[];
+  nonBadgeLines: string[];
+  badgeStartIndex?: number;
+  badgeEndIndex?: number;
+} {
   const markdownBadgeRegex = /^\[!\[[^\]]*\]\([^)]+\)\]\([^)]+\)$/;
   const htmlBadgeStartRegex = /^\s*<a\s+href=/i;
   const htmlBadgeEndRegex = /<\/a>\s*$/i;
   const htmlImgRegex = /<img\s+/i;
-  const maxScan = Math.min(lines.length, searchStart + 30);
+  const centeredParagraphStartRegex = /^\s*<p\b[^>]*\balign=["']center["'][^>]*>/i;
+  const paragraphEndRegex = /<\/p>\s*$/i;
+  const linkedImageBadgeRegex = /<a\s+href=["'][^"']+["'][^>]*>\s*<img\b[^>]*\/?>\s*<\/a>/i;
+  const maxScan = Math.min(lines.length, searchEnd);
   const badgeLines: string[] = [];
   const badgeIndexes = new Set<number>();
   let foundBadge = false;
@@ -229,8 +267,45 @@ export function extractExistingBadgeLines(
       continue;
     }
 
+    if (centeredParagraphStartRegex.test(trimmed)) {
+      const paragraphLines = [line];
+      const paragraphIndexes = [index];
+      let scan = index;
+      let hasEnd = paragraphEndRegex.test(trimmed);
+
+      while (!hasEnd && scan + 1 < maxScan) {
+        scan += 1;
+        const nextLine = lines[scan];
+        const nextTrimmed = nextLine.trim();
+        paragraphLines.push(nextLine);
+        paragraphIndexes.push(scan);
+        if (paragraphEndRegex.test(nextTrimmed)) {
+          hasEnd = true;
+        }
+      }
+
+      const paragraphContent = paragraphLines.join(' ');
+      const hasLinkedImageBadge = linkedImageBadgeRegex.test(paragraphContent);
+      if (hasLinkedImageBadge) {
+        foundBadge = true;
+        badgeLines.push(...paragraphLines);
+        for (const badgeIndex of paragraphIndexes) {
+          badgeIndexes.add(badgeIndex);
+        }
+        index = scan + 1;
+        continue;
+      }
+
+      if (foundBadge) {
+        break;
+      }
+
+      index = scan + 1;
+      continue;
+    }
+
     if (htmlBadgeStartRegex.test(trimmed)) {
-      const htmlLines = [trimmed];
+      const htmlLines = [line];
       const htmlIndexes = [index];
       let scan = index;
       let hasImg = htmlImgRegex.test(trimmed);
@@ -238,8 +313,9 @@ export function extractExistingBadgeLines(
 
       while (!hasEnd && scan + 1 < maxScan) {
         scan += 1;
-        const nextTrimmed = lines[scan].trim();
-        htmlLines.push(nextTrimmed);
+        const nextLine = lines[scan];
+        const nextTrimmed = nextLine.trim();
+        htmlLines.push(nextLine);
         htmlIndexes.push(scan);
         if (htmlImgRegex.test(nextTrimmed)) hasImg = true;
         if (htmlBadgeEndRegex.test(nextTrimmed)) hasEnd = true;
@@ -247,7 +323,7 @@ export function extractExistingBadgeLines(
 
       if (hasImg && hasEnd) {
         foundBadge = true;
-        badgeLines.push(...htmlLines.filter((entry) => entry !== ''));
+        badgeLines.push(...htmlLines);
         for (const badgeIndex of htmlIndexes) {
           badgeIndexes.add(badgeIndex);
         }
@@ -260,9 +336,20 @@ export function extractExistingBadgeLines(
       break;
     }
 
-    break;
+    index += 1;
   }
 
   const nonBadgeLines = lines.filter((_, idx) => !badgeIndexes.has(idx));
-  return { badgeLines, nonBadgeLines };
+  const badgeIndexList = [...badgeIndexes].sort((left, right) => left - right);
+  const badgeStartIndex = badgeIndexList[0];
+  const badgeEndIndex = badgeIndexList.length > 0
+    ? badgeIndexList[badgeIndexList.length - 1] + 1
+    : undefined;
+
+  return {
+    badgeLines,
+    nonBadgeLines,
+    badgeStartIndex,
+    badgeEndIndex,
+  };
 }

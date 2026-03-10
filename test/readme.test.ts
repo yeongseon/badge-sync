@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   extractBadgeBlock,
   hasBadgeBlock,
+  insertBadgeMarkers,
   parseExistingBadges,
   replaceBadgeBlock,
 } from '../src/readme.js';
@@ -204,6 +205,74 @@ describe('readme', () => {
       expect(result[0].label).toBe('CI');
       expect(result[0].imageUrl).toBe('https://github.com/test/repo/badge.svg');
       expect(result[0].linkUrl).toBe('https://github.com/test/repo/actions');
+    });
+  });
+
+  describe('insertBadgeMarkers', () => {
+    it('wraps pre-heading centered HTML badge block and skips centered logo block', () => {
+      const content = [
+        '<p align="center">',
+        '  <img src="https://example.com/logo.png" alt="Logo" width="320" />',
+        '</p>',
+        '',
+        '<p align="center">',
+        '  <a href="https://example.com/test"><img src="https://img.shields.io/badge/test-passing-brightgreen" alt="Test Status" /></a>',
+        '  <a href="https://example.com/release"><img src="https://img.shields.io/badge/release-stable-blue" alt="Release Status" /></a>',
+        '  <a href="https://pypi.org/project/example"><img src="https://img.shields.io/pypi/v/example" alt="PyPI Version" /></a>',
+        '</p>',
+        '',
+        '---',
+        '',
+        '# Azure Functions Doctor for Python',
+      ].join('\n');
+
+      const result = insertBadgeMarkers(content);
+
+      const expected = [
+        '<p align="center">',
+        '  <img src="https://example.com/logo.png" alt="Logo" width="320" />',
+        '</p>',
+        '',
+        '<!-- BADGES:START -->',
+        '<p align="center">',
+        '  <a href="https://example.com/test"><img src="https://img.shields.io/badge/test-passing-brightgreen" alt="Test Status" /></a>',
+        '  <a href="https://example.com/release"><img src="https://img.shields.io/badge/release-stable-blue" alt="Release Status" /></a>',
+        '  <a href="https://pypi.org/project/example"><img src="https://img.shields.io/pypi/v/example" alt="PyPI Version" /></a>',
+        '</p>',
+        '<!-- BADGES:END -->',
+        '',
+        '---',
+        '',
+        '# Azure Functions Doctor for Python',
+      ].join('\n');
+
+      expect(result).toBe(expected);
+      expect(result.match(/<a href=/g)).toHaveLength(3);
+      expect(result.match(/<!-- BADGES:START -->/g)).toHaveLength(1);
+      expect(result.match(/<!-- BADGES:END -->/g)).toHaveLength(1);
+    });
+
+    it('wraps markdown badges after heading', () => {
+      const content = [
+        '# azure-functions-openapi',
+        '',
+        '[![PyPI](https://img.shields.io/pypi/v/azure-functions-openapi)](https://pypi.org/project/azure-functions-openapi/)',
+        '[![Python Version](https://img.shields.io/pypi/pyversions/azure-functions-openapi)](https://pypi.org/project/azure-functions-openapi/)',
+        '[![CI](https://github.com/example/repo/actions/workflows/ci.yml/badge.svg)](https://github.com/example/repo/actions/workflows/ci.yml)',
+      ].join('\n');
+
+      const result = insertBadgeMarkers(content);
+      const expected = [
+        '# azure-functions-openapi',
+        '',
+        '<!-- BADGES:START -->',
+        '[![PyPI](https://img.shields.io/pypi/v/azure-functions-openapi)](https://pypi.org/project/azure-functions-openapi/)',
+        '[![Python Version](https://img.shields.io/pypi/pyversions/azure-functions-openapi)](https://pypi.org/project/azure-functions-openapi/)',
+        '[![CI](https://github.com/example/repo/actions/workflows/ci.yml/badge.svg)](https://github.com/example/repo/actions/workflows/ci.yml)',
+        '<!-- BADGES:END -->',
+      ].join('\n');
+
+      expect(result).toBe(expected);
     });
   });
 });

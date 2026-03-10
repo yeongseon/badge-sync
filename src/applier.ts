@@ -5,6 +5,7 @@ import { DEFAULT_CONFIG } from "./config.js";
 import { detectMetadata, detectReadmeFile } from "./detector.js";
 import { formatBadges } from "./formatter.js";
 import {
+	hasBadgeBlock,
 	insertBadgeMarkers,
 	parseExistingBadges,
 	readBadgeBlock,
@@ -106,7 +107,13 @@ export async function applyBadges(
 	const badges = resolveBadges(metadata);
 	const formatted = formatBadges(badges, config);
 
-	// Read current badge block to check if changes are needed
+	// Auto-insert markers if missing
+	const readmeContent = await readFile(readmePath, 'utf-8');
+	if (!hasBadgeBlock(readmeContent)) {
+		const updated = insertBadgeMarkers(readmeContent);
+		await writeFile(readmePath, updated, 'utf-8');
+	}
+
 	let currentBlock: string;
 	try {
 		currentBlock = await readBadgeBlock(readmePath);
