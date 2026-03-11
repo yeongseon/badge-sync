@@ -1,6 +1,6 @@
 {
   "name": "badge-sync",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Keep your README badges clean, valid, and consistent",
   "type": "module",
   "bin": {
