@@ -240,29 +240,92 @@ Priority: user config > project preset > default ordering.
 
 ## CI Integration
 
-### Using npx
+### Badge Check (CI gate)
+
+Fail your pipeline when badges drift out of sync:
+
+```yaml
+# .github/workflows/ci.yml
+- uses: yeongseon/badge-sync@v1
+  with:
+    command: check
+```
+
+Or without the action:
 
 ```yaml
 - name: Check badges
   run: npx badge-sync check
 ```
 
-### Using GitHub Action
+### Badge Bot (automated PR)
+
+Keep badges automatically up to date — badge-sync runs on a schedule or when metadata files change, and opens a PR if badges need updating:
 
 ```yaml
-- uses: yeongseon/badge-sync@v1
-  with:
-    command: check
+# .github/workflows/badge-sync.yml
+name: badge-sync bot
+
+on:
+  schedule:
+    - cron: '0 9 * * 1' # weekly Monday 09:00 UTC
+  push:
+    branches: [main]
+    paths:
+      - 'package.json'
+      - 'pyproject.toml'
+      - 'Cargo.toml'
+      - '.github/workflows/*.yml'
+      - 'LICENSE'
+      - 'badgesync.config.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  badge-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: yeongseon/badge-sync@v1
+        with:
+          command: apply
+      - name: Check for changes
+        id: diff
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Create Pull Request
+        if: steps.diff.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          commit-message: 'chore: sync README badges'
+          title: 'chore: sync README badges'
+          body: |
+            Automated badge sync by [badge-sync](https://github.com/yeongseon/badge-sync).
+            This PR updates the badge block to match current project metadata.
+          branch: badge-sync/update
+          delete-branch: true
+          labels: badges, automated
 ```
 
-With options:
+See [docs/github-action.md](docs/github-action.md) for trigger customization, token permissions, and FAQ.
+
+### Using the Action Directly
+
+The `yeongseon/badge-sync` action accepts these inputs:
 
 ```yaml
 - uses: yeongseon/badge-sync@v1
   with:
-    command: apply
-    readme: docs/README.md
-    dry-run: true
+    command: apply    # apply | check | init | doctor | repair
+    readme: README.md # path to README file
+    dry-run: false    # preview without writing
 ```
 
 ## Contributing

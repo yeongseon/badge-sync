@@ -4,7 +4,7 @@ author: 'yeongseon'
 
 inputs:
   command:
-    description: 'Command to run: apply, check, doctor, repair'
+    description: 'Command to run: apply, check, init, doctor, repair'
     required: false
     default: 'check'
   readme:
