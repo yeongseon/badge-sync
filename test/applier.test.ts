@@ -10,8 +10,10 @@ import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
 	applyBadges,
+	applyWorkspace,
 	buildDryRunReport,
 	checkBadges,
+	checkWorkspace,
 	doctorBadges,
 	initBadges,
 	listBadges,
@@ -214,6 +216,74 @@ describe("applier", () => {
 			expect(pkgAReadme).toContain("img.shields.io/npm/v/pkg-a");
 			expect(pkgBReadme).not.toContain("img.shields.io/npm/v/pkg-a");
 		});
+
+		it("applies badges across all detected monorepo packages", async () => {
+			const cwd = resolve(TMP, "monorepo-workspace-apply");
+			mkdirSync(resolve(cwd, "packages", "pkg-a"), { recursive: true });
+			mkdirSync(resolve(cwd, "packages", "pkg-b"), { recursive: true });
+			writeFileSync(
+				resolve(cwd, "package.json"),
+				JSON.stringify({ workspaces: ["packages/*"] }),
+			);
+			writeFileSync(
+				resolve(cwd, "packages", "pkg-a", "package.json"),
+				JSON.stringify({ name: "pkg-a" }),
+			);
+			writeFileSync(
+				resolve(cwd, "packages", "pkg-b", "package.json"),
+				JSON.stringify({ name: "pkg-b" }),
+			);
+			writeFileSync(
+				resolve(cwd, "packages", "pkg-a", "README.md"),
+				"<!-- BADGES:START -->\n<!-- BADGES:END -->\n",
+			);
+			writeFileSync(
+				resolve(cwd, "packages", "pkg-b", "README.md"),
+				"<!-- BADGES:START -->\n<!-- BADGES:END -->\n",
+			);
+
+			const result = await applyWorkspace(cwd, makeConfig());
+
+			expect(result.results).toHaveLength(2);
+			expect(result.results.every((entry) => !entry.error)).toBe(true);
+			expect(result.totalApplied).toBeGreaterThan(0);
+			expect(result.totalChanged).toBe(2);
+		});
+
+		it("continues workspace apply when one package fails", async () => {
+			const cwd = resolve(TMP, "monorepo-workspace-apply-error");
+			mkdirSync(resolve(cwd, "packages", "pkg-a"), { recursive: true });
+			mkdirSync(resolve(cwd, "packages", "pkg-b"), { recursive: true });
+			writeFileSync(
+				resolve(cwd, "package.json"),
+				JSON.stringify({ workspaces: ["packages/*"] }),
+			);
+			writeFileSync(
+				resolve(cwd, "packages", "pkg-a", "package.json"),
+				JSON.stringify({ name: "pkg-a" }),
+			);
+			writeFileSync(
+				resolve(cwd, "packages", "pkg-b", "package.json"),
+				JSON.stringify({ name: "pkg-b" }),
+			);
+			writeFileSync(
+				resolve(cwd, "packages", "pkg-a", "README.md"),
+				"<!-- BADGES:START -->\n<!-- BADGES:END -->\n",
+			);
+
+			const result = await applyWorkspace(cwd, makeConfig());
+
+			expect(result.results).toHaveLength(2);
+			expect(result.results.some((entry) => entry.error?.includes("README file not found"))).toBe(true);
+			expect(result.results.some((entry) => entry.packageName === "pkg-a" && !entry.error)).toBe(true);
+		});
+
+		it("throws when workspace apply is used outside monorepo", async () => {
+			const cwd = copyFixture("javascript-project");
+			await expect(applyWorkspace(cwd, makeConfig())).rejects.toThrow(
+				"No monorepo packages detected. Use --package <name> for single packages.",
+			);
+		});
 	});
 
 	describe("checkBadges", () => {
@@ -297,6 +367,74 @@ describe("applier", () => {
 			const result = await checkBadges(cwd, makeConfig(), "packages/pkg-a");
 
 			expect(result.inSync).toBe(true);
+		});
+
+		it("checks all detected monorepo packages", async () => {
+			const cwd = resolve(TMP, "monorepo-workspace-check");
+			mkdirSync(resolve(cwd, "packages", "pkg-a"), { recursive: true });
+			mkdirSync(resolve(cwd, "packages", "pkg-b"), { recursive: true });
+			writeFileSync(
+				resolve(cwd, "package.json"),
+				JSON.stringify({ workspaces: ["packages/*"] }),
+			);
+			writeFileSync(
+				resolve(cwd, "packages", "pkg-a", "package.json"),
+				JSON.stringify({ name: "pkg-a" }),
+			);
+			writeFileSync(
+				resolve(cwd, "packages", "pkg-b", "package.json"),
+				JSON.stringify({ name: "pkg-b" }),
+			);
+			writeFileSync(
+				resolve(cwd, "packages", "pkg-a", "README.md"),
+				"<!-- BADGES:START -->\n<!-- BADGES:END -->\n",
+			);
+			writeFileSync(
+				resolve(cwd, "packages", "pkg-b", "README.md"),
+				"<!-- BADGES:START -->\n<!-- BADGES:END -->\n",
+			);
+
+			await applyWorkspace(cwd, makeConfig());
+			const result = await checkWorkspace(cwd, makeConfig());
+
+			expect(result.results).toHaveLength(2);
+			expect(result.results.every((entry) => entry.result.inSync)).toBe(true);
+			expect(result.allInSync).toBe(true);
+		});
+
+		it("continues workspace check when one package fails", async () => {
+			const cwd = resolve(TMP, "monorepo-workspace-check-error");
+			mkdirSync(resolve(cwd, "packages", "pkg-a"), { recursive: true });
+			mkdirSync(resolve(cwd, "packages", "pkg-b"), { recursive: true });
+			writeFileSync(
+				resolve(cwd, "package.json"),
+				JSON.stringify({ workspaces: ["packages/*"] }),
+			);
+			writeFileSync(
+				resolve(cwd, "packages", "pkg-a", "package.json"),
+				JSON.stringify({ name: "pkg-a" }),
+			);
+			writeFileSync(
+				resolve(cwd, "packages", "pkg-b", "package.json"),
+				JSON.stringify({ name: "pkg-b" }),
+			);
+			writeFileSync(
+				resolve(cwd, "packages", "pkg-a", "README.md"),
+				"<!-- BADGES:START -->\n<!-- BADGES:END -->\n",
+			);
+
+			const result = await checkWorkspace(cwd, makeConfig());
+
+			expect(result.results).toHaveLength(2);
+			expect(result.results.some((entry) => entry.error?.includes("README file not found"))).toBe(true);
+			expect(result.allInSync).toBe(false);
+		});
+
+		it("throws when workspace check is used outside monorepo", async () => {
+			const cwd = copyFixture("javascript-project");
+			await expect(checkWorkspace(cwd, makeConfig())).rejects.toThrow(
+				"No monorepo packages detected. Use --package <name> for single packages.",
+			);
 		});
 	});
 	describe("doctorBadges", () => {

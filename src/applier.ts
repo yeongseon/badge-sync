@@ -36,6 +36,29 @@ export interface CheckResult {
 	current: string;
 }
 
+/** Result from workspace-wide apply */
+export interface WorkspaceApplyResult {
+	results: Array<{
+		packageName: string;
+		packagePath: string;
+		result: ApplyResult;
+		error?: string;
+	}>;
+	totalApplied: number;
+	totalChanged: number;
+}
+
+/** Result from workspace-wide check */
+export interface WorkspaceCheckResult {
+	results: Array<{
+		packageName: string;
+		packagePath: string;
+		result: CheckResult;
+		error?: string;
+	}>;
+	allInSync: boolean;
+}
+
 /** Result from the doctor command */
 export interface DoctorResult {
 	issues: ValidationResult[];
@@ -192,6 +215,105 @@ export async function checkBadges(
 		inSync: current === expected,
 		expected,
 		current,
+	};
+}
+
+export async function applyWorkspace(
+	cwd: string,
+	config: Config,
+	options: { dryRun?: boolean } = {},
+): Promise<WorkspaceApplyResult> {
+	const metadata = await detectMetadata(cwd);
+	if (!metadata.isMonorepo || metadata.packages.length === 0) {
+		throw new Error(
+			"No monorepo packages detected. Use --package <name> for single packages.",
+		);
+	}
+
+	const results: WorkspaceApplyResult["results"] = [];
+	let totalApplied = 0;
+	let totalChanged = 0;
+
+	for (const pkg of metadata.packages) {
+		try {
+			const result = await applyBadges(cwd, config, options, pkg.path);
+			results.push({
+				packageName: pkg.name,
+				packagePath: pkg.path,
+				result,
+			});
+			totalApplied += result.applied;
+			if (result.changed) {
+				totalChanged += 1;
+			}
+		} catch (error: unknown) {
+			const message =
+				error instanceof Error ? error.message : "Unknown error during apply";
+			results.push({
+				packageName: pkg.name,
+				packagePath: pkg.path,
+				result: {
+					applied: 0,
+					badges: [],
+					changed: false,
+				},
+				error: message,
+			});
+		}
+	}
+
+	return {
+		results,
+		totalApplied,
+		totalChanged,
+	};
+}
+
+export async function checkWorkspace(
+	cwd: string,
+	config: Config,
+): Promise<WorkspaceCheckResult> {
+	const metadata = await detectMetadata(cwd);
+	if (!metadata.isMonorepo || metadata.packages.length === 0) {
+		throw new Error(
+			"No monorepo packages detected. Use --package <name> for single packages.",
+		);
+	}
+
+	const results: WorkspaceCheckResult["results"] = [];
+	let allInSync = true;
+
+	for (const pkg of metadata.packages) {
+		try {
+			const result = await checkBadges(cwd, config, pkg.path);
+			results.push({
+				packageName: pkg.name,
+				packagePath: pkg.path,
+				result,
+			});
+			if (!result.inSync) {
+				allInSync = false;
+			}
+		} catch (error: unknown) {
+			const message =
+				error instanceof Error ? error.message : "Unknown error during check";
+			results.push({
+				packageName: pkg.name,
+				packagePath: pkg.path,
+				result: {
+					inSync: false,
+					expected: "",
+					current: "",
+				},
+				error: message,
+			});
+			allInSync = false;
+		}
+	}
+
+	return {
+		results,
+		allInSync,
 	};
 }
 

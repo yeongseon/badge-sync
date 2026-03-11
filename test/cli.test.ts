@@ -75,10 +75,22 @@ describe("cli", () => {
 		expect(opts).toContain("--package");
 	});
 
+	it("apply command has --workspace option", () => {
+		const apply = getCommand("apply");
+		const opts = apply.options.map((o) => o.long);
+		expect(opts).toContain("--workspace");
+	});
+
 	it("check command has --package option", () => {
 		const check = getCommand("check");
 		const opts = check.options.map((o) => o.long);
 		expect(opts).toContain("--package");
+	});
+
+	it("check command has --workspace option", () => {
+		const check = getCommand("check");
+		const opts = check.options.map((o) => o.long);
+		expect(opts).toContain("--workspace");
 	});
 
 	it("init command has --markers-only option", () => {

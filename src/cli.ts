@@ -1,5 +1,15 @@
 import { Command } from 'commander';
-import { applyBadges, buildDryRunReport, checkBadges, doctorBadges, initBadges, listBadges, repairBadges } from './applier.js';
+import {
+  applyBadges,
+  applyWorkspace,
+  buildDryRunReport,
+  checkBadges,
+  checkWorkspace,
+  doctorBadges,
+  initBadges,
+  listBadges,
+  repairBadges,
+} from './applier.js';
 import { loadConfig } from './config.js';
 import { detectMetadata } from './detector.js';
 
@@ -20,11 +30,61 @@ export function createProgram(): Command {
     .option('--readme <path>', 'README file path')
     .option('--config <path>', 'Config file path')
     .option('--package <name>', 'Target a specific monorepo package')
+    .option('--workspace', 'Apply badges to all monorepo packages', false)
     .option('--dry-run', 'Print changes without writing', false)
-    .action(async (opts: { readme?: string; config?: string; package?: string; dryRun?: boolean }) => {
+    .action(async (opts: { readme?: string; config?: string; package?: string; workspace?: boolean; dryRun?: boolean }) => {
       const cwd = process.cwd();
       const config = await loadConfig(cwd, opts.config);
       if (opts.readme) config.readme = opts.readme;
+
+      if (opts.workspace && opts.package) {
+        throw new Error('Cannot use --workspace and --package together');
+      }
+
+      if (opts.workspace) {
+        const workspaceResult = await applyWorkspace(cwd, config, { dryRun: opts.dryRun });
+        const totalPackages = workspaceResult.results.length;
+
+        if (opts.dryRun) {
+          process.stdout.write(`Workspace: dry run for ${totalPackages} packages\n\n`);
+
+          let succeeded = 0;
+          for (const entry of workspaceResult.results) {
+            if (entry.error) {
+              process.stdout.write(`  ✗ ${entry.packageName} — Error: ${entry.error}\n`);
+              continue;
+            }
+
+            const report = await buildDryRunReport(cwd, config, entry.packagePath);
+            process.stdout.write(
+              `  ${entry.packageName} — Would apply ${report.total} badge(s) (${report.newCount} new, ${report.updatedCount} updated, ${report.unchangedCount} unchanged)\n`,
+            );
+            succeeded += 1;
+          }
+
+          process.stdout.write(`\nDry run complete for ${succeeded} packages\n`);
+          return;
+        }
+
+        process.stdout.write(`Workspace: applying badges to ${totalPackages} packages\n\n`);
+        let succeeded = 0;
+        for (const entry of workspaceResult.results) {
+          if (entry.error) {
+            process.stdout.write(`  ✗ ${entry.packageName} — Error: ${entry.error}\n`);
+            continue;
+          }
+
+          const unchangedSuffix = entry.result.changed ? '' : ' (unchanged)';
+          process.stdout.write(
+            `  ✓ ${entry.packageName} — Applied ${entry.result.applied} badges${unchangedSuffix}\n`,
+          );
+          succeeded += 1;
+        }
+
+        process.stdout.write(`\nApplied badges to ${succeeded}/${totalPackages} packages\n`);
+        return;
+      }
+
       const packageDir = await resolvePackageDir(cwd, opts.package);
 
       const result = await applyBadges(cwd, config, { dryRun: opts.dryRun }, packageDir);
@@ -67,10 +127,47 @@ export function createProgram(): Command {
     .option('--readme <path>', 'README file path')
     .option('--config <path>', 'Config file path')
     .option('--package <name>', 'Target a specific monorepo package')
-    .action(async (opts: { readme?: string; config?: string; package?: string }) => {
+    .option('--workspace', 'Check badges for all monorepo packages', false)
+    .action(async (opts: { readme?: string; config?: string; package?: string; workspace?: boolean }) => {
       const cwd = process.cwd();
       const config = await loadConfig(cwd, opts.config);
       if (opts.readme) config.readme = opts.readme;
+
+      if (opts.workspace && opts.package) {
+        throw new Error('Cannot use --workspace and --package together');
+      }
+
+      if (opts.workspace) {
+        const workspaceResult = await checkWorkspace(cwd, config);
+        const totalPackages = workspaceResult.results.length;
+        process.stdout.write(`Workspace: checking ${totalPackages} packages\n\n`);
+
+        let inSyncCount = 0;
+        for (const entry of workspaceResult.results) {
+          if (entry.error) {
+            process.stdout.write(`  ✗ ${entry.packageName} — Error: ${entry.error}\n`);
+            continue;
+          }
+
+          if (entry.result.inSync) {
+            process.stdout.write(`  ✓ ${entry.packageName} — in sync\n`);
+            inSyncCount += 1;
+            continue;
+          }
+
+          const differences = countLineDifferences(
+            entry.result.expected,
+            entry.result.current,
+          );
+          process.stdout.write(
+            `  ✗ ${entry.packageName} — out of sync (${differences} differences)\n`,
+          );
+        }
+
+        process.stdout.write(`\n${inSyncCount}/${totalPackages} packages in sync\n`);
+        process.exit(workspaceResult.allInSync ? 0 : 1);
+      }
+
       const packageDir = await resolvePackageDir(cwd, opts.package);
 
       const result = await checkBadges(cwd, config, packageDir);

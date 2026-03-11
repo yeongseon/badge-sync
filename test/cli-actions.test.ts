@@ -8,8 +8,10 @@ vi.mock('../src/config.js', () => ({
 }));
 vi.mock('../src/applier.js', () => ({
   applyBadges: vi.fn(),
+  applyWorkspace: vi.fn(),
   buildDryRunReport: vi.fn(),
   checkBadges: vi.fn(),
+  checkWorkspace: vi.fn(),
   doctorBadges: vi.fn(),
   repairBadges: vi.fn(),
   listBadges: vi.fn(),
@@ -21,13 +23,15 @@ vi.mock('../src/detector.js', () => ({
 
 const { createProgram } = await import('../src/cli.js');
 const { loadConfig } = await import('../src/config.js');
-const { applyBadges, buildDryRunReport, checkBadges, doctorBadges, repairBadges, listBadges, initBadges } = await import('../src/applier.js');
+const { applyBadges, applyWorkspace, buildDryRunReport, checkBadges, checkWorkspace, doctorBadges, repairBadges, listBadges, initBadges } = await import('../src/applier.js');
 const { detectMetadata } = await import('../src/detector.js');
 
 const mockLoadConfig = vi.mocked(loadConfig);
 const mockApplyBadges = vi.mocked(applyBadges);
+const mockApplyWorkspace = vi.mocked(applyWorkspace);
 const mockBuildDryRunReport = vi.mocked(buildDryRunReport);
 const mockCheckBadges = vi.mocked(checkBadges);
+const mockCheckWorkspace = vi.mocked(checkWorkspace);
 const mockDoctorBadges = vi.mocked(doctorBadges);
 const mockRepairBadges = vi.mocked(repairBadges);
 const mockListBadges = vi.mocked(listBadges);
@@ -199,6 +203,87 @@ describe('cli action handlers', () => {
         expect(error).toBe(testError);
       }
     })
+
+    it('runs workspace apply and prints summary', async () => {
+      mockApplyWorkspace.mockResolvedValue({
+        results: [
+          {
+            packageName: 'pkg-a',
+            packagePath: 'packages/pkg-a',
+            result: { applied: 4, badges: [testBadge], changed: true },
+          },
+          {
+            packageName: 'pkg-b',
+            packagePath: 'packages/pkg-b',
+            result: { applied: 3, badges: [testBadge], changed: false },
+          },
+          {
+            packageName: 'pkg-c',
+            packagePath: 'packages/pkg-c',
+            result: { applied: 0, badges: [], changed: false },
+            error: 'README file not found',
+          },
+        ],
+        totalApplied: 7,
+        totalChanged: 1,
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+      await program.parseAsync(['node', 'badge-sync', 'apply', '--workspace']);
+
+      expect(writeSpy).toHaveBeenCalledWith('Workspace: applying badges to 3 packages\n\n');
+      expect(writeSpy).toHaveBeenCalledWith('  ✓ pkg-a — Applied 4 badges\n');
+      expect(writeSpy).toHaveBeenCalledWith('  ✓ pkg-b — Applied 3 badges (unchanged)\n');
+      expect(writeSpy).toHaveBeenCalledWith('  ✗ pkg-c — Error: README file not found\n');
+      expect(writeSpy).toHaveBeenCalledWith('\nApplied badges to 2/3 packages\n');
+      expect(mockApplyBadges).not.toHaveBeenCalled();
+    });
+
+    it('runs workspace apply dry-run and prints per-package report', async () => {
+      mockApplyWorkspace.mockResolvedValue({
+        results: [
+          {
+            packageName: 'pkg-a',
+            packagePath: 'packages/pkg-a',
+            result: { applied: 4, badges: [testBadge], changed: true },
+          },
+          {
+            packageName: 'pkg-b',
+            packagePath: 'packages/pkg-b',
+            result: { applied: 3, badges: [testBadge], changed: false },
+          },
+        ],
+        totalApplied: 7,
+        totalChanged: 1,
+      });
+      mockBuildDryRunReport
+        .mockResolvedValueOnce({
+          total: 4,
+          newCount: 1,
+          updatedCount: 2,
+          unchangedCount: 1,
+          entries: [],
+          customBadges: [],
+        })
+        .mockResolvedValueOnce({
+          total: 3,
+          newCount: 0,
+          updatedCount: 0,
+          unchangedCount: 3,
+          entries: [],
+          customBadges: [],
+        });
+
+      const program = createProgram();
+      program.exitOverride();
+      await program.parseAsync(['node', 'badge-sync', 'apply', '--workspace', '--dry-run']);
+
+      expect(writeSpy).toHaveBeenCalledWith('Workspace: dry run for 2 packages\n\n');
+      expect(writeSpy).toHaveBeenCalledWith('  pkg-a — Would apply 4 badge(s) (1 new, 2 updated, 1 unchanged)\n');
+      expect(writeSpy).toHaveBeenCalledWith('  pkg-b — Would apply 3 badge(s) (0 new, 0 updated, 3 unchanged)\n');
+      expect(writeSpy).toHaveBeenCalledWith('\nDry run complete for 2 packages\n');
+    });
   });
 
   describe('check command', () => {
@@ -297,6 +382,64 @@ describe('cli action handlers', () => {
       }
 
       expect(mockCheckBadges).toHaveBeenCalledWith(expect.any(String), expect.any(Object), 'packages/pkg-a');
+    });
+
+    it('runs workspace check and exits 1 when any package is out of sync', async () => {
+      mockCheckWorkspace.mockResolvedValue({
+        results: [
+          {
+            packageName: 'pkg-a',
+            packagePath: 'packages/pkg-a',
+            result: { inSync: true, expected: 'same', current: 'same' },
+          },
+          {
+            packageName: 'pkg-b',
+            packagePath: 'packages/pkg-b',
+            result: { inSync: false, expected: 'a\nb', current: 'a\nc' },
+          },
+        ],
+        allInSync: false,
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'check', '--workspace']);
+      } catch {
+        // process.exit(1) throws due to mock
+      }
+
+      expect(writeSpy).toHaveBeenCalledWith('Workspace: checking 2 packages\n\n');
+      expect(writeSpy).toHaveBeenCalledWith('  ✓ pkg-a — in sync\n');
+      expect(writeSpy).toHaveBeenCalledWith('  ✗ pkg-b — out of sync (1 differences)\n');
+      expect(writeSpy).toHaveBeenCalledWith('\n1/2 packages in sync\n');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(mockCheckBadges).not.toHaveBeenCalled();
+    });
+
+    it('runs workspace check and exits 0 when all packages are in sync', async () => {
+      mockCheckWorkspace.mockResolvedValue({
+        results: [
+          {
+            packageName: 'pkg-a',
+            packagePath: 'packages/pkg-a',
+            result: { inSync: true, expected: 'same', current: 'same' },
+          },
+        ],
+        allInSync: true,
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'check', '--workspace']);
+      } catch {
+        // process.exit(0) throws due to mock
+      }
+
+      expect(exitSpy).toHaveBeenCalledWith(0);
     });
   });
 
@@ -620,6 +763,50 @@ describe('cli action handlers', () => {
   });
 
   describe('option passthrough', () => {
+    it('throws when --workspace and --package are used together for apply', async () => {
+      const program = createProgram();
+      program.exitOverride();
+
+      await expect(
+        program.parseAsync(['node', 'badge-sync', 'apply', '--workspace', '--package', 'pkg-a']),
+      ).rejects.toThrow('Cannot use --workspace and --package together');
+    });
+
+    it('throws when --workspace and --package are used together for check', async () => {
+      const program = createProgram();
+      program.exitOverride();
+
+      await expect(
+        program.parseAsync(['node', 'badge-sync', 'check', '--workspace', '--package', 'pkg-a']),
+      ).rejects.toThrow('Cannot use --workspace and --package together');
+    });
+
+    it('rethrows workspace apply errors (non-monorepo)', async () => {
+      mockApplyWorkspace.mockRejectedValue(
+        new Error('No monorepo packages detected. Use --package <name> for single packages.'),
+      );
+
+      const program = createProgram();
+      program.exitOverride();
+
+      await expect(
+        program.parseAsync(['node', 'badge-sync', 'apply', '--workspace']),
+      ).rejects.toThrow('No monorepo packages detected. Use --package <name> for single packages.');
+    });
+
+    it('rethrows workspace check errors (non-monorepo)', async () => {
+      mockCheckWorkspace.mockRejectedValue(
+        new Error('No monorepo packages detected. Use --package <name> for single packages.'),
+      );
+
+      const program = createProgram();
+      program.exitOverride();
+
+      await expect(
+        program.parseAsync(['node', 'badge-sync', 'check', '--workspace']),
+      ).rejects.toThrow('No monorepo packages detected. Use --package <name> for single packages.');
+    });
+
     it('passes --readme option to config for apply', async () => {
       mockApplyBadges.mockResolvedValue({
         applied: 1,
