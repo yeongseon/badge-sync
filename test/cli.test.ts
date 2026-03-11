@@ -93,6 +93,12 @@ describe("cli", () => {
 		expect(opts).toContain("--workspace");
 	});
 
+	it("check command has --summary option", () => {
+		const check = getCommand("check");
+		const opts = check.options.map((o) => o.long);
+		expect(opts).toContain("--summary");
+	});
+
 	it("init command has --markers-only option", () => {
 		const init = getCommand("init");
 		const opts = init.options.map((o) => o.long);

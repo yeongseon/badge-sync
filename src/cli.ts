@@ -128,7 +128,8 @@ export function createProgram(): Command {
     .option('--config <path>', 'Config file path')
     .option('--package <name>', 'Target a specific monorepo package')
     .option('--workspace', 'Check badges for all monorepo packages', false)
-    .action(async (opts: { readme?: string; config?: string; package?: string; workspace?: boolean }) => {
+    .option('--summary', 'Print a structured badge summary for CI', false)
+    .action(async (opts: { readme?: string; config?: string; package?: string; workspace?: boolean; summary?: boolean }) => {
       const cwd = process.cwd();
       const config = await loadConfig(cwd, opts.config);
       if (opts.readme) config.readme = opts.readme;
@@ -139,6 +140,54 @@ export function createProgram(): Command {
 
       if (opts.workspace) {
         const workspaceResult = await checkWorkspace(cwd, config);
+
+        if (opts.summary) {
+          process.stdout.write('badges summary\n\n');
+
+          let totalValid = 0;
+          let totalOutdated = 0;
+          let totalMissing = 0;
+          let hasErrors = false;
+
+          for (let index = 0; index < workspaceResult.results.length; index += 1) {
+            const entry = workspaceResult.results[index];
+            let summary: { valid: number; outdated: number; missing: number };
+
+            if (entry.error) {
+              hasErrors = true;
+              summary = { valid: 0, outdated: 0, missing: 0 };
+            } else {
+              const report = await buildDryRunReport(cwd, config, entry.packagePath);
+              summary = {
+                valid: report.unchangedCount,
+                outdated: report.updatedCount,
+                missing: report.newCount,
+              };
+            }
+
+            totalValid += summary.valid;
+            totalOutdated += summary.outdated;
+            totalMissing += summary.missing;
+
+            process.stdout.write(`  ${entry.packageName}\n`);
+            process.stdout.write(`    valid:    ${summary.valid}\n`);
+            process.stdout.write(`    outdated: ${summary.outdated}\n`);
+            process.stdout.write(`    missing:  ${summary.missing}\n`);
+
+            if (index < workspaceResult.results.length - 1) {
+              process.stdout.write('\n');
+            }
+          }
+
+          process.stdout.write('\n');
+          process.stdout.write('  total\n');
+          process.stdout.write(`    valid:    ${totalValid}\n`);
+          process.stdout.write(`    outdated: ${totalOutdated}\n`);
+          process.stdout.write(`    missing:  ${totalMissing}\n`);
+
+          process.exit(!hasErrors && totalOutdated === 0 && totalMissing === 0 ? 0 : 1);
+        }
+
         const totalPackages = workspaceResult.results.length;
         process.stdout.write(`Workspace: checking ${totalPackages} packages\n\n`);
 
@@ -169,6 +218,15 @@ export function createProgram(): Command {
       }
 
       const packageDir = await resolvePackageDir(cwd, opts.package);
+
+      if (opts.summary) {
+        const report = await buildDryRunReport(cwd, config, packageDir);
+        process.stdout.write('badges summary\n\n');
+        process.stdout.write(`  valid:    ${report.unchangedCount}\n`);
+        process.stdout.write(`  outdated: ${report.updatedCount}\n`);
+        process.stdout.write(`  missing:  ${report.newCount}\n`);
+        process.exit(report.updatedCount === 0 && report.newCount === 0 ? 0 : 1);
+      }
 
       const result = await checkBadges(cwd, config, packageDir);
 

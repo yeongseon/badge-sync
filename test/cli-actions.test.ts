@@ -349,6 +349,56 @@ describe('cli action handlers', () => {
       expect(exitSpy).toHaveBeenCalledWith(1);
     });
 
+    it('--summary prints structured summary when in sync', async () => {
+      mockBuildDryRunReport.mockResolvedValue({
+        total: 4,
+        newCount: 0,
+        updatedCount: 0,
+        unchangedCount: 4,
+        entries: [],
+        customBadges: [],
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'check', '--summary']);
+      } catch {
+        // process.exit(0) throws due to mock
+      }
+
+      const output = writeSpy.mock.calls.map(([chunk]) => String(chunk)).join('');
+      expect(output).toBe('badges summary\n\n  valid:    4\n  outdated: 0\n  missing:  0\n');
+      expect(exitSpy).toHaveBeenCalledWith(0);
+      expect(mockCheckBadges).not.toHaveBeenCalled();
+    });
+
+    it('--summary prints structured summary when out of sync', async () => {
+      mockBuildDryRunReport.mockResolvedValue({
+        total: 4,
+        newCount: 1,
+        updatedCount: 2,
+        unchangedCount: 1,
+        entries: [],
+        customBadges: [],
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'check', '--summary']);
+      } catch {
+        // process.exit(1) throws due to mock
+      }
+
+      const output = writeSpy.mock.calls.map(([chunk]) => String(chunk)).join('');
+      expect(output).toBe('badges summary\n\n  valid:    1\n  outdated: 2\n  missing:  1\n');
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(mockCheckBadges).not.toHaveBeenCalled();
+    });
+
     it('passes --package option to checkBadges', async () => {
       mockCheckBadges.mockResolvedValue({
         inSync: true,
@@ -440,6 +490,111 @@ describe('cli action handlers', () => {
       }
 
       expect(exitSpy).toHaveBeenCalledWith(0);
+    });
+
+    it('--summary works with --workspace', async () => {
+      mockCheckWorkspace.mockResolvedValue({
+        results: [
+          {
+            packageName: 'pkg-a',
+            packagePath: 'packages/pkg-a',
+            result: { inSync: true, expected: 'same', current: 'same' },
+          },
+          {
+            packageName: 'pkg-b',
+            packagePath: 'packages/pkg-b',
+            result: { inSync: false, expected: 'a', current: 'b' },
+          },
+        ],
+        allInSync: false,
+      });
+
+      mockBuildDryRunReport
+        .mockResolvedValueOnce({
+          total: 4,
+          newCount: 0,
+          updatedCount: 0,
+          unchangedCount: 4,
+          entries: [],
+          customBadges: [],
+        })
+        .mockResolvedValueOnce({
+          total: 4,
+          newCount: 1,
+          updatedCount: 1,
+          unchangedCount: 2,
+          entries: [],
+          customBadges: [],
+        });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'check', '--workspace', '--summary']);
+      } catch {
+        // process.exit(1) throws due to mock
+      }
+
+      const output = writeSpy.mock.calls.map(([chunk]) => String(chunk)).join('');
+      expect(output).toBe(
+        'badges summary\n\n  pkg-a\n    valid:    4\n    outdated: 0\n    missing:  0\n\n  pkg-b\n    valid:    2\n    outdated: 1\n    missing:  1\n\n  total\n    valid:    6\n    outdated: 1\n    missing:  1\n',
+      );
+      expect(exitSpy).toHaveBeenCalledWith(1);
+      expect(mockBuildDryRunReport).toHaveBeenNthCalledWith(
+        1,
+        expect.any(String),
+        expect.any(Object),
+        'packages/pkg-a',
+      );
+      expect(mockBuildDryRunReport).toHaveBeenNthCalledWith(
+        2,
+        expect.any(String),
+        expect.any(Object),
+        'packages/pkg-b',
+      );
+    });
+
+    it('--summary works with --package', async () => {
+      mockDetectMetadata.mockResolvedValue({
+        ecosystem: ['javascript'],
+        packageName: 'root',
+        packageNames: { javascript: 'root' },
+        isMonorepo: true,
+        packages: [{ name: 'pkg-a', path: 'packages/pkg-a', ecosystem: 'javascript' }],
+        coverageService: null,
+        hasCoverage: false,
+        repositoryUrl: null,
+        owner: null,
+        repo: null,
+        license: null,
+        workflows: [],
+        nodeVersion: null,
+        pythonVersion: null,
+      });
+      mockBuildDryRunReport.mockResolvedValue({
+        total: 4,
+        newCount: 0,
+        updatedCount: 0,
+        unchangedCount: 4,
+        entries: [],
+        customBadges: [],
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'check', '--package', 'pkg-a', '--summary']);
+      } catch {
+        // process.exit(0) throws due to mock
+      }
+
+      const output = writeSpy.mock.calls.map(([chunk]) => String(chunk)).join('');
+      expect(output).toBe('badges summary\n\n  valid:    4\n  outdated: 0\n  missing:  0\n');
+      expect(exitSpy).toHaveBeenCalledWith(0);
+      expect(mockBuildDryRunReport).toHaveBeenCalledWith(expect.any(String), expect.any(Object), 'packages/pkg-a');
+      expect(mockCheckBadges).not.toHaveBeenCalled();
     });
   });
 
