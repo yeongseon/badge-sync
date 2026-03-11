@@ -42,6 +42,17 @@ export function resolveBadges(metadata: RepositoryMetadata): Badge[] {
     });
   }
 
+  const goModule = metadata.packageNames?.go ?? metadata.packageName;
+  if (metadata.ecosystem.includes('go') && goModule) {
+    badges.push({
+      type: 'go-module',
+      group: 'distribution',
+      label: 'go reference',
+      imageUrl: `https://pkg.go.dev/badge/${goModule}.svg`,
+      linkUrl: `https://pkg.go.dev/${goModule}`,
+    });
+  }
+
   // Runtime badges
   if (metadata.ecosystem.includes('javascript') && metadata.nodeVersion) {
     badges.push({
@@ -60,6 +71,16 @@ export function resolveBadges(metadata: RepositoryMetadata): Badge[] {
       label: 'python version',
       imageUrl: `https://img.shields.io/pypi/pyversions/${pyPackage ?? 'unknown'}`,
       linkUrl: 'https://www.python.org',
+    });
+  }
+
+  if (metadata.ecosystem.includes('go') && metadata.goVersion && metadata.owner && metadata.repo) {
+    badges.push({
+      type: 'go-version',
+      group: 'runtime',
+      label: 'Go version',
+      imageUrl: `https://img.shields.io/github/go-mod/go-version/${metadata.owner}/${metadata.repo}`,
+      linkUrl: 'https://go.dev',
     });
   }
 
@@ -97,6 +118,17 @@ export function resolveBadges(metadata: RepositoryMetadata): Badge[] {
         linkUrl: `https://coveralls.io/github/${metadata.owner}/${metadata.repo}?branch=main`,
       });
     }
+  }
+
+  // Quality badges — Go report card
+  if (metadata.ecosystem.includes('go') && goModule) {
+    badges.push({
+      type: 'go-report',
+      group: 'quality',
+      label: 'Go Report Card',
+      imageUrl: `https://goreportcard.com/badge/${goModule}`,
+      linkUrl: `https://goreportcard.com/report/${goModule}`,
+    });
   }
 
   // Metadata badges
@@ -176,6 +208,9 @@ export function inferBadgeType(imageUrl: string, linkUrl: string): string | null
     return `github-actions-${workflowName}`;
   }
 
+  if (imageUrl.includes('pkg.go.dev/badge/')) return 'go-module';
+  if (imageUrl.includes('img.shields.io/github/go-mod/go-version/')) return 'go-version';
+  if (imageUrl.includes('goreportcard.com/badge/')) return 'go-report';
   return null;
 }
 
@@ -183,16 +218,16 @@ export function inferBadgeType(imageUrl: string, linkUrl: string): string | null
  * Infer badge group from badge type.
  */
 export function inferBadgeGroup(type: string): Badge['group'] {
-  if (type === 'npm-version' || type === 'pypi-version' || type === 'crates-version') {
+  if (type === 'npm-version' || type === 'pypi-version' || type === 'crates-version' || type === 'go-module') {
     return 'distribution';
   }
-  if (type === 'node-version' || type === 'python-version') {
+  if (type === 'node-version' || type === 'python-version' || type === 'go-version') {
     return 'runtime';
   }
   if (type.startsWith('github-actions-')) {
     return 'build';
   }
-  if (type === 'coverage') {
+  if (type === 'coverage' || type === 'go-report') {
     return 'quality';
   }
   if (type === 'license') {

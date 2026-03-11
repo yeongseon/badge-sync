@@ -18,6 +18,7 @@ function makeMetadata(overrides: Partial<RepositoryMetadata> = {}): RepositoryMe
     workflows: [],
     nodeVersion: null,
     pythonVersion: null,
+    goVersion: null,
     ...overrides,
   };
 }
@@ -120,6 +121,82 @@ describe('resolver', () => {
       const crate = expectBadge(badges, 'crates-version');
       expect(crate.imageUrl).toBe('https://img.shields.io/crates/v/my-crate');
       expect(crate.linkUrl).toBe('https://crates.io/crates/my-crate');
+    });
+  });
+
+  describe('Go badges', () => {
+    it('generates go-module badge for Go project with module name', () => {
+      const meta = makeMetadata({
+        ecosystem: ['go'],
+        packageName: 'github.com/user/my-go-app',
+        packageNames: { go: 'github.com/user/my-go-app' },
+        owner: 'user',
+        repo: 'my-go-app',
+      });
+      const badges = resolveBadges(meta);
+      const goMod = expectBadge(badges, 'go-module');
+      expect(goMod.group).toBe('distribution');
+      expect(goMod.imageUrl).toBe('https://pkg.go.dev/badge/github.com/user/my-go-app.svg');
+      expect(goMod.linkUrl).toBe('https://pkg.go.dev/github.com/user/my-go-app');
+    });
+
+    it('generates go-version badge when goVersion is present', () => {
+      const meta = makeMetadata({
+        ecosystem: ['go'],
+        packageName: 'github.com/user/my-go-app',
+        goVersion: '1.21',
+        owner: 'user',
+        repo: 'my-go-app',
+      });
+      const badges = resolveBadges(meta);
+      const goVer = expectBadge(badges, 'go-version');
+      expect(goVer.group).toBe('runtime');
+      expect(goVer.imageUrl).toBe('https://img.shields.io/github/go-mod/go-version/user/my-go-app');
+      expect(goVer.linkUrl).toBe('https://go.dev');
+    });
+
+    it('generates go-report badge for Go project', () => {
+      const meta = makeMetadata({
+        ecosystem: ['go'],
+        packageName: 'github.com/user/my-go-app',
+        packageNames: { go: 'github.com/user/my-go-app' },
+        owner: 'user',
+        repo: 'my-go-app',
+      });
+      const badges = resolveBadges(meta);
+      const goReport = expectBadge(badges, 'go-report');
+      expect(goReport.group).toBe('quality');
+      expect(goReport.imageUrl).toBe('https://goreportcard.com/badge/github.com/user/my-go-app');
+      expect(goReport.linkUrl).toBe('https://goreportcard.com/report/github.com/user/my-go-app');
+    });
+
+    it('skips go-module if no package name', () => {
+      const meta = makeMetadata({
+        ecosystem: ['go'],
+        owner: 'user',
+        repo: 'my-go-app',
+      });
+      const badges = resolveBadges(meta);
+      expect(badges.find((b) => b.type === 'go-module')).toBeUndefined();
+    });
+
+    it('skips go-version if no goVersion', () => {
+      const meta = makeMetadata({
+        ecosystem: ['go'],
+        packageName: 'github.com/user/my-go-app',
+      });
+      const badges = resolveBadges(meta);
+      expect(badges.find((b) => b.type === 'go-version')).toBeUndefined();
+    });
+
+    it('skips go-version if no owner/repo', () => {
+      const meta = makeMetadata({
+        ecosystem: ['go'],
+        packageName: 'github.com/user/my-go-app',
+        goVersion: '1.21',
+      });
+      const badges = resolveBadges(meta);
+      expect(badges.find((b) => b.type === 'go-version')).toBeUndefined();
     });
   });
 
@@ -429,6 +506,21 @@ describe('inferBadgeType', () => {
     );
     expect(result).toBeNull();
   });
+
+  it('returns go-module for pkg.go.dev badge imageUrl', () => {
+    const result = inferBadgeType('https://pkg.go.dev/badge/github.com/user/repo.svg', '');
+    expect(result).toBe('go-module');
+  });
+
+  it('returns go-version for go-mod go-version badge imageUrl', () => {
+    const result = inferBadgeType('https://img.shields.io/github/go-mod/go-version/user/repo', '');
+    expect(result).toBe('go-version');
+  });
+
+  it('returns go-report for goreportcard badge imageUrl', () => {
+    const result = inferBadgeType('https://goreportcard.com/badge/github.com/user/repo', '');
+    expect(result).toBe('go-report');
+  });
 });
 
 describe('inferBadgeGroup', () => {
@@ -485,5 +577,20 @@ describe('inferBadgeGroup', () => {
   it('returns social for unknown badge type', () => {
     const result = inferBadgeGroup('unknown-badge');
     expect(result).toBe('social');
+  });
+
+  it('returns distribution for go-module', () => {
+    const result = inferBadgeGroup('go-module');
+    expect(result).toBe('distribution');
+  });
+
+  it('returns runtime for go-version', () => {
+    const result = inferBadgeGroup('go-version');
+    expect(result).toBe('runtime');
+  });
+
+  it('returns quality for go-report', () => {
+    const result = inferBadgeGroup('go-report');
+    expect(result).toBe('quality');
   });
 });

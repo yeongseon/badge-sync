@@ -1,5 +1,5 @@
 /** Detected ecosystem type */
-export type Ecosystem = 'javascript' | 'python' | 'rust';
+export type Ecosystem = 'javascript' | 'python' | 'rust' | 'go';
 
 /** Badge group for ordering */
 export type BadgeGroup = 'distribution' | 'runtime' | 'build' | 'quality' | 'metadata' | 'social';
@@ -26,6 +26,7 @@ export interface RepositoryMetadata {
   workflows: string[];
   nodeVersion: string | null;
   pythonVersion: string | null;
+  goVersion: string | null;
 }
 
 /** A package within a monorepo */

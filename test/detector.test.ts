@@ -772,4 +772,38 @@ describe("detector", () => {
 			);
 		});
 	});
+
+	describe("Go project", () => {
+		const cwd = resolve(FIXTURES, "go-project");
+
+		it("detects go ecosystem", async () => {
+			const meta = await detectMetadata(cwd);
+			expect(meta.ecosystem).toContain("go");
+		});
+
+		it("extracts module name from go.mod", async () => {
+			const meta = await detectMetadata(cwd);
+			expect(meta.packageName).toBe("github.com/testuser/my-go-app");
+		});
+
+		it("extracts go version from go.mod", async () => {
+			const meta = await detectMetadata(cwd);
+			expect(meta.goVersion).toBe("1.21");
+		});
+
+		it("detects MIT license", async () => {
+			const meta = await detectMetadata(cwd);
+			expect(meta.license).toBe("MIT");
+		});
+
+		it("detects workflow files", async () => {
+			const meta = await detectMetadata(cwd);
+			expect(meta.workflows).toContain("ci.yml");
+		});
+
+		it("populates go packageNames", async () => {
+			const meta = await detectMetadata(cwd);
+			expect(meta.packageNames.go).toBe("github.com/testuser/my-go-app");
+		});
+	});
 });

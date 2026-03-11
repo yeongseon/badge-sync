@@ -248,6 +248,7 @@ export async function detectMetadata(cwd: string): Promise<RepositoryMetadata> {
 		workflows: [],
 		nodeVersion: null,
 		pythonVersion: null,
+		goVersion: null,
 	};
 
 	// Detect ecosystems and package metadata in parallel
@@ -255,6 +256,7 @@ export async function detectMetadata(cwd: string): Promise<RepositoryMetadata> {
 		packageJson,
 		pyprojectToml,
 		cargoToml,
+		goMod,
 		workflows,
 		licenseContent,
 		gitRemote,
@@ -264,6 +266,7 @@ export async function detectMetadata(cwd: string): Promise<RepositoryMetadata> {
 		readFileSafe(join(cwd, "package.json")),
 		readFileSafe(join(cwd, "pyproject.toml")),
 		readFileSafe(join(cwd, "Cargo.toml")),
+		readFileSafe(join(cwd, "go.mod")),
 		detectWorkflows(cwd),
 		detectLicense(cwd),
 		detectGitRemote(cwd),
@@ -344,6 +347,23 @@ export async function detectMetadata(cwd: string): Promise<RepositoryMetadata> {
 			if (!metadata.packageName) {
 				metadata.packageName = name;
 			}
+		}
+	}
+
+	// Go
+	if (goMod) {
+		metadata.ecosystem.push("go");
+		const moduleMatch = goMod.match(/^module\s+(.+)$/m);
+		if (moduleMatch) {
+			const moduleName = moduleMatch[1].trim();
+			metadata.packageNames.go = moduleName;
+			if (!metadata.packageName) {
+				metadata.packageName = moduleName;
+			}
+		}
+		const goVersionMatch = goMod.match(/^go\s+(\S+)$/m);
+		if (goVersionMatch) {
+			metadata.goVersion = goVersionMatch[1];
 		}
 	}
 	// Workflows
@@ -436,10 +456,11 @@ async function detectMonorepoPackage(
 	packageDir: string,
 ): Promise<MonorepoPackage | null> {
 	const packagePath = join(cwd, packageDir);
-	const [packageJson, pyprojectToml, cargoToml] = await Promise.all([
+	const [packageJson, pyprojectToml, cargoToml, goMod] = await Promise.all([
 		readFileSafe(join(packagePath, "package.json")),
 		readFileSafe(join(packagePath, "pyproject.toml")),
 		readFileSafe(join(packagePath, "Cargo.toml")),
+		readFileSafe(join(packagePath, "go.mod")),
 	]);
 
 	const normalizedPath = packageDir.replaceAll("\\", "/");
@@ -475,6 +496,16 @@ async function detectMonorepoPackage(
 			name: packageName,
 			path: normalizedPath,
 			ecosystem: "rust",
+		};
+	}
+
+	if (goMod !== null) {
+		const moduleMatch = goMod.match(/^module\s+(.+)$/m);
+		const packageName = moduleMatch ? moduleMatch[1].trim() : fallbackName;
+		return {
+			name: packageName,
+			path: normalizedPath,
+			ecosystem: "go",
 		};
 	}
 
