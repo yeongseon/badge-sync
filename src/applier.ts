@@ -14,6 +14,8 @@ import {
 	writeBadgeBlock,
 } from "./readme.js";
 import { inferBadgeGroup, inferBadgeType, resolveBadges } from "./resolver.js";
+import { detectMigrations } from "./migrator.js";
+import type { MigrationResult } from "./migrator.js";
 import type {
 	Badge,
 	Config,
@@ -68,6 +70,11 @@ export interface DoctorResult {
 export interface RepairResult {
 	fixed: ValidationResult[];
 	remaining: ValidationResult[];
+	applied: boolean;
+}
+
+export interface MigrateResult {
+	migrations: MigrationResult[];
 	applied: boolean;
 }
 
@@ -378,6 +385,72 @@ export async function listBadges(
 		packages: metadata.packages,
 		badges,
 	};
+}
+
+export async function migrateBadges(
+	cwd: string,
+	config: Config,
+	options: { dryRun?: boolean; normalize?: boolean } = {},
+): Promise<MigrateResult> {
+	const readmePath = resolveReadmePath(cwd, config);
+
+	if (!existsSync(readmePath)) {
+		throw new Error(`README file not found: ${readmePath}`);
+	}
+
+	let currentBlock: string;
+	try {
+		currentBlock = await readBadgeBlock(readmePath);
+	} catch {
+		throw new Error(
+			`Badge block markers not found in ${config.readme}. Add these markers to your README:\n<!-- BADGES:START -->\n<!-- BADGES:END -->`,
+		);
+	}
+
+	const existingBadges = parseExistingBadges(currentBlock);
+	const metadata = await detectMetadata(cwd);
+	const migrations = detectMigrations(
+		existingBadges,
+		{
+			owner: metadata.owner,
+			repo: metadata.repo,
+			workflows: metadata.workflows,
+		},
+		{ normalize: options.normalize },
+	);
+
+	if (options.dryRun || migrations.length === 0) {
+		return { migrations, applied: false };
+	}
+
+	const pending = [...migrations];
+	const migratedLines: string[] = [];
+	for (const badge of existingBadges) {
+		const migrationIndex = pending.findIndex(
+			(migration) =>
+				migration.original.raw === badge.raw
+				&& migration.original.label === badge.label
+				&& migration.original.imageUrl === badge.imageUrl
+				&& migration.original.linkUrl === badge.linkUrl,
+		);
+
+		if (migrationIndex === -1) {
+			migratedLines.push(badge.raw);
+			continue;
+		}
+
+		const [migration] = pending.splice(migrationIndex, 1);
+		if (!migration.migrated) {
+			continue;
+		}
+
+		migratedLines.push(
+			`[![${migration.migrated.label}](${migration.migrated.imageUrl})](${migration.migrated.linkUrl})`,
+		);
+	}
+
+	await writeBadgeBlock(readmePath, migratedLines.join("\n"));
+	return { migrations, applied: true };
 }
 
 /**

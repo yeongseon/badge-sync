@@ -16,6 +16,7 @@ vi.mock('../src/applier.js', () => ({
   repairBadges: vi.fn(),
   listBadges: vi.fn(),
   initBadges: vi.fn(),
+  migrateBadges: vi.fn(),
 }));
 vi.mock('../src/detector.js', () => ({
   detectMetadata: vi.fn(),
@@ -23,7 +24,7 @@ vi.mock('../src/detector.js', () => ({
 
 const { createProgram } = await import('../src/cli.js');
 const { loadConfig } = await import('../src/config.js');
-const { applyBadges, applyWorkspace, buildDryRunReport, checkBadges, checkWorkspace, doctorBadges, repairBadges, listBadges, initBadges } = await import('../src/applier.js');
+const { applyBadges, applyWorkspace, buildDryRunReport, checkBadges, checkWorkspace, doctorBadges, repairBadges, listBadges, initBadges, migrateBadges } = await import('../src/applier.js');
 const { detectMetadata } = await import('../src/detector.js');
 
 const mockLoadConfig = vi.mocked(loadConfig);
@@ -37,6 +38,7 @@ const mockRepairBadges = vi.mocked(repairBadges);
 const mockListBadges = vi.mocked(listBadges);
 const mockInitBadges = vi.mocked(initBadges);
 const mockDetectMetadata = vi.mocked(detectMetadata);
+const mockMigrateBadges = vi.mocked(migrateBadges);
 
 const defaultConfig: Config = {
   readme: 'README.md',
@@ -840,6 +842,134 @@ describe('cli action handlers', () => {
         expect.any(String),
         expect.any(Object),
         expect.objectContaining({ timeout: 5000 }),
+      );
+    });
+  });
+
+  describe('migrate command', () => {
+    it('prints no migrations needed when none found', async () => {
+      mockMigrateBadges.mockResolvedValue({
+        migrations: [],
+        applied: false,
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'migrate']);
+      } catch {
+        // process.exit(0) throws due to mock
+      }
+
+      expect(writeSpy).toHaveBeenCalledWith('No migrations needed\n');
+      expect(exitSpy).toHaveBeenCalledWith(0);
+    });
+
+    it('prints migrations in dry-run mode', async () => {
+      mockMigrateBadges.mockResolvedValue({
+        migrations: [
+          {
+            original: { label: 'Build', imageUrl: 'https://travis-ci.org/acme/repo.svg', linkUrl: 'https://travis-ci.org/acme/repo', raw: '...' },
+            migrated: { label: 'Build', imageUrl: 'https://github.com/acme/repo/actions/workflows/ci.yml/badge.svg', linkUrl: 'https://github.com/acme/repo/actions/workflows/ci.yml' },
+            rule: 'travis-to-github-actions',
+            description: 'Travis CI is deprecated for many open source projects; migrate to GitHub Actions.',
+          },
+        ],
+        applied: false,
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'migrate', '--dry-run']);
+      } catch {
+        // process.exit(0) throws due to mock
+      }
+
+      expect(writeSpy).toHaveBeenCalledWith('Found 1 migration(s)\n\n');
+      expect(mockMigrateBadges).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Object),
+        expect.objectContaining({ dryRun: true }),
+      );
+      expect(exitSpy).toHaveBeenCalledWith(0);
+    });
+
+    it('prints applied migrations', async () => {
+      mockMigrateBadges.mockResolvedValue({
+        migrations: [
+          {
+            original: { label: 'Build', imageUrl: 'https://travis-ci.org/acme/repo.svg', linkUrl: 'https://travis-ci.org/acme/repo', raw: '...' },
+            migrated: { label: 'Build', imageUrl: 'https://github.com/acme/repo/actions/workflows/ci.yml/badge.svg', linkUrl: 'https://github.com/acme/repo/actions/workflows/ci.yml' },
+            rule: 'travis-to-github-actions',
+            description: 'Travis CI is deprecated for many open source projects; migrate to GitHub Actions.',
+          },
+        ],
+        applied: true,
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'migrate']);
+      } catch {
+        // process.exit(0) throws due to mock
+      }
+
+      expect(writeSpy).toHaveBeenCalledWith('Applied 1 migration(s)\n\n');
+      expect(exitSpy).toHaveBeenCalledWith(0);
+    });
+
+    it('prints removal action for null migrations', async () => {
+      mockMigrateBadges.mockResolvedValue({
+        migrations: [
+          {
+            original: { label: 'Dependencies', imageUrl: 'https://david-dm.org/acme/repo.svg', linkUrl: 'https://david-dm.org/acme/repo', raw: '...' },
+            migrated: null,
+            rule: 'remove-david-dm',
+            description: 'david-dm.org is defunct and its dependency status badges should be removed.',
+          },
+        ],
+        applied: true,
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'migrate']);
+      } catch {
+        // process.exit(0) throws due to mock
+      }
+
+      expect(writeSpy).toHaveBeenCalledWith('Applied 1 migration(s)\n\n');
+      expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining('\u2717'));
+      expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining('remove'));
+      expect(exitSpy).toHaveBeenCalledWith(0);
+    });
+
+    it('passes --normalize option to migrateBadges', async () => {
+      mockMigrateBadges.mockResolvedValue({
+        migrations: [],
+        applied: false,
+      });
+
+      const program = createProgram();
+      program.exitOverride();
+
+      try {
+        await program.parseAsync(['node', 'badge-sync', 'migrate', '--normalize']);
+      } catch {
+        // process.exit(0) throws due to mock
+      }
+
+      expect(mockMigrateBadges).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.any(Object),
+        expect.objectContaining({ normalize: true }),
       );
     });
   });

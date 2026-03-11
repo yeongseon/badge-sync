@@ -104,4 +104,22 @@ describe("cli", () => {
 		const opts = init.options.map((o) => o.long);
 		expect(opts).toContain("--markers-only");
 	});
+
+	it("has migrate command", () => {
+		const program = createProgram();
+		const migrate = program.commands.find((c) => c.name() === "migrate");
+		expect(migrate).toBeDefined();
+	});
+
+	it("migrate command has --dry-run option", () => {
+		const migrate = getCommand("migrate");
+		const opts = migrate.options.map((o) => o.long);
+		expect(opts).toContain("--dry-run");
+	});
+
+	it("migrate command has --normalize option", () => {
+		const migrate = getCommand("migrate");
+		const opts = migrate.options.map((o) => o.long);
+		expect(opts).toContain("--normalize");
+	});
 });

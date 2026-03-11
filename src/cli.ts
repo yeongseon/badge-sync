@@ -8,6 +8,7 @@ import {
   doctorBadges,
   initBadges,
   listBadges,
+  migrateBadges,
   repairBadges,
 } from './applier.js';
 import { loadConfig } from './config.js';
@@ -318,6 +319,46 @@ export function createProgram(): Command {
         }
         process.exit(1);
       }
+    });
+
+  program
+    .command('migrate')
+    .description('Migrate deprecated badge URLs to modern equivalents')
+    .option('--readme <path>', 'README file path')
+    .option('--config <path>', 'Config file path')
+    .option('--dry-run', 'Show migrations without applying', false)
+    .option('--normalize', 'Also normalize badge URL formats', false)
+    .action(async (opts: { readme?: string; config?: string; dryRun?: boolean; normalize?: boolean }) => {
+      const cwd = process.cwd();
+      const config = await loadConfig(cwd, opts.config);
+      if (opts.readme) config.readme = opts.readme;
+
+      const result = await migrateBadges(cwd, config, {
+        dryRun: opts.dryRun,
+        normalize: opts.normalize,
+      });
+
+      if (result.migrations.length === 0) {
+        process.stdout.write('No migrations needed\n');
+        process.exit(0);
+      }
+
+      if (opts.dryRun) {
+        process.stdout.write(`Found ${result.migrations.length} migration(s)\n\n`);
+      } else {
+        process.stdout.write(`Applied ${result.migrations.length} migration(s)\n\n`);
+      }
+
+      for (const migration of result.migrations) {
+        const action = migration.migrated ? '→' : '✗';
+        const target = migration.migrated
+          ? `${migration.migrated.label}`
+          : 'remove';
+        process.stdout.write(`  ${action} [${migration.rule}] ${migration.original.label} ${action === '✗' ? '— ' : ''}${target}\n`);
+        process.stdout.write(`    ${migration.description}\n`);
+      }
+
+      process.exit(0);
     });
 
   program
