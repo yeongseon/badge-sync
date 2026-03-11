@@ -334,19 +334,183 @@ Initial version will support:
 - README badge block management
 - `apply`, `check`, `doctor`, `repair` commands
 
-## 12. Future Enhancements
+## 12. Roadmap
 
-Possible future extensions include:
+### v0.2 — Stability & Real Usage
 
-- additional ecosystem support (Go, Java, etc.)
-- ~~coverage badge detection~~ (implemented)
-- documentation badge detection
-- ~~GitHub Action distribution~~ (implemented)
-- interactive CLI setup
-- monorepo support
-- repository-wide badge policies
+Goal: Make badge-sync reliable in CI environments and practical for real-world monorepo projects.
 
-## 13. Success Metrics
+#### 12.1 Doctor Cache
+
+The `doctor` command makes HTTP HEAD requests to validate every badge URL. In projects with many badges, this is slow and causes CI flakiness due to network timeouts and rate limiting.
+
+**Solution**: Add a local cache file `.badge-sync-cache.json` that stores validation results with timestamps.
+
+Cache entry format:
+
+```json
+{
+  "https://img.shields.io/npm/v/badge-sync": {
+    "status": true,
+    "checkedAt": 1710000000000
+  }
+}
+```
+
+New CLI options:
+
+| Option | Description |
+| --- | --- |
+| `--refresh-cache` | Ignore existing cache and re-validate all URLs, then update cache |
+| `--no-cache` | Skip cache entirely (current behavior) |
+
+Cache behavior:
+
+- Default TTL: 24 hours. Entries older than TTL are re-validated automatically.
+- Cache file should be added to `.gitignore` (badge-sync can suggest this).
+- `repair` also benefits from the cache since it runs `doctor` internally.
+
+#### 12.2 Workspace Mode
+
+badge-sync already detects monorepo packages (npm workspaces, pnpm, lerna, Cargo workspaces) and supports `--package <name>` for targeting individual packages. What is missing is batch processing across all packages.
+
+**New options:**
+
+```bash
+badge-sync check --workspace
+badge-sync apply --workspace
+```
+
+Behavior:
+
+1. Detect all workspace packages using existing `detectMonorepo()` logic.
+2. Run the command (apply/check) for each package sequentially.
+3. Print a workspace summary at the end.
+
+Example output:
+
+```
+workspace summary
+
+  pkg-a  ✓
+  pkg-b  ⚠ out of sync
+  pkg-c  ✓
+```
+
+Exit code: `1` if any package has issues, `0` if all pass.
+
+#### 12.3 Check Summary
+
+The `check` command currently outputs a binary in-sync/out-of-sync result. For CI dashboards and quick status checks, a structured summary is more useful.
+
+**New option:**
+
+```bash
+badge-sync check --summary
+```
+
+Example output:
+
+```
+badges summary
+
+  valid:    8
+  outdated: 2
+  missing:  1
+```
+
+Implementation note: The existing `buildDryRunReport()` function already computes `newCount`, `updatedCount`, and `unchangedCount`. The `--summary` flag reuses this data.
+
+### v0.3 — Migration Tool
+
+Goal: Position badge-sync as the go-to tool for cleaning up legacy README badges.
+
+The majority of README badge problems come from:
+
+- old CI provider badges (Travis CI, CircleCI) after migrating to GitHub Actions
+- deprecated Shields.io URL formats
+- duplicate badges accumulated over time
+
+#### 12.4 Badge Migration
+
+New command:
+
+```bash
+badge-sync migrate
+```
+
+Detects deprecated or outdated badge URLs and suggests replacements.
+
+Migration mappings:
+
+| From | To |
+| --- | --- |
+| Travis CI (`travis-ci.org/...`) | GitHub Actions workflow badge |
+| CircleCI (`circleci.com/gh/...`) | GitHub Actions workflow badge |
+| Deprecated Shields.io URLs | Current Shields.io URL format |
+| `david-dm.org` (defunct) | Remove or replace |
+
+Behavior:
+
+- `--dry-run` is supported (and recommended for first use).
+- Only modifies badges within the badge block markers.
+- Follows the Conservative by Default principle: suggests replacements rather than silently changing providers.
+- Migration is always explicit — the user must run `migrate`, it never happens as part of `apply`.
+
+Design note: Badge normalization (canonicalizing different URL formats for the same badge) is handled within the `migrate` command via a `--normalize` flag, rather than as a separate command. This avoids overlap with `apply`, which already generates canonical URLs from metadata.
+
+### v0.4 — Ecosystem Expansion
+
+Goal: Broaden language support and prepare for a plugin architecture.
+
+#### 12.5 Additional Ecosystem Support
+
+New ecosystems to add directly (without plugins):
+
+| Ecosystem | Metadata Source | Badge Provider |
+| --- | --- | --- |
+| Go | `go.mod` | shields.io (`/github/go-mod/go-version`) |
+| Java (Maven) | `pom.xml` | shields.io (`/maven-central/v`) |
+| Java (Gradle) | `build.gradle` / `build.gradle.kts` | shields.io (`/maven-central/v`) |
+| .NET | `*.csproj` / `*.fsproj` | shields.io (`/nuget/v`) |
+
+Each new ecosystem requires:
+
+1. Detection logic in `detector.ts`
+2. Badge resolution in `resolver.ts`
+3. Type additions in `types.ts` (extend `Ecosystem` union)
+4. Test fixtures and unit tests
+
+#### 12.6 Plugin Architecture (Future)
+
+After adding 2-3 more ecosystems directly, extract the common pattern into a plugin interface:
+
+```typescript
+interface EcosystemPlugin {
+  name: string;
+  detect(cwd: string): Promise<EcosystemMetadata | null>;
+  resolve(metadata: EcosystemMetadata): Badge[];
+}
+```
+
+Plugin packages follow the naming convention `badge-sync-plugin-<ecosystem>` (e.g., `badge-sync-plugin-go`, `badge-sync-plugin-java`).
+
+This is intentionally deferred until the interface is validated by at least 5 built-in ecosystems. Premature abstraction would over-engineer the current simple detector/resolver pipeline.
+
+## 13. Previous Future Enhancements
+
+Items from the original roadmap, updated with current status:
+
+- ~~coverage badge detection~~ (implemented in v0.1)
+- ~~GitHub Action distribution~~ (implemented in v0.1)
+- ~~monorepo detection~~ (implemented in v0.1, workspace batch mode planned for v0.2)
+- ~~badge ordering~~ (implemented in v0.1)
+- additional ecosystem support → planned for v0.4
+- documentation badge detection → not yet planned
+- interactive CLI setup → not yet planned
+- repository-wide badge policies → not yet planned
+
+## 14. Success Metrics
 
 - number of repositories using badge-sync
 - adoption in CI/CD pipelines
