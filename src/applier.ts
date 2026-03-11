@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { basename, resolve } from "node:path";
+import { DEFAULT_CACHE_TTL, loadCache, saveCache } from "./cache.js";
 import { DEFAULT_CONFIG } from "./config.js";
 import { detectMetadata, detectReadmeFile } from "./detector.js";
 import { formatBadges } from "./formatter.js";
@@ -201,7 +202,7 @@ export async function checkBadges(
 export async function doctorBadges(
 	cwd: string,
 	config: Config,
-	options: { timeout?: number } = {},
+	options: { timeout?: number; noCache?: boolean; refreshCache?: boolean } = {},
 ): Promise<DoctorResult> {
 	const readmePath = resolveReadmePath(cwd, config);
 
@@ -222,11 +223,24 @@ export async function doctorBadges(
 	const badges = parseExistingBadges(currentBlock).map((badge) =>
 		toExistingBadgeDefinition(badge),
 	);
+	const cache = options.noCache
+		? undefined
+		: options.refreshCache
+			? {}
+			: await loadCache(cwd);
+
 	const issues = await validateBadges(badges, cwd, {
 		timeout: options.timeout,
 		expectedOwner: metadata.owner,
 		expectedRepo: metadata.repo,
+		cache,
+		noCache: options.noCache,
+		cacheTtl: DEFAULT_CACHE_TTL,
 	});
+
+	if (!options.noCache && cache) {
+		await saveCache(cwd, cache);
+	}
 
 	return { issues };
 }
@@ -252,7 +266,12 @@ export async function listBadges(
 export async function repairBadges(
 	cwd: string,
 	config: Config,
-	options: { dryRun?: boolean; timeout?: number } = {},
+	options: {
+		dryRun?: boolean;
+		timeout?: number;
+		noCache?: boolean;
+		refreshCache?: boolean;
+	} = {},
 ): Promise<RepairResult> {
 	const readmePath = resolveReadmePath(cwd, config);
 
@@ -263,6 +282,8 @@ export async function repairBadges(
 	// Run doctor first
 	const { issues } = await doctorBadges(cwd, config, {
 		timeout: options.timeout,
+		noCache: options.noCache,
+		refreshCache: options.refreshCache,
 	});
 
 	if (issues.length === 0) {

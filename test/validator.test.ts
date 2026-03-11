@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Badge } from '../src/types.js';
 
 // Mock fetch globally before importing validator
@@ -140,6 +140,88 @@ describe('validator', () => {
       const mismatch = results.find((r) => r.issue === 'mismatched-repo');
       expect(mismatch).toBeDefined();
       expect(mismatch!.fixable).toBe(true);
+    });
+  });
+
+  describe('Cache integration', () => {
+    it('uses cached URLs and skips fetch', async () => {
+      vi.spyOn(Date, 'now').mockReturnValue(10_000);
+      const badge = makeBadge();
+      const cache = {
+        [badge.imageUrl]: { accessible: true, checkedAt: 9_000 },
+        [badge.linkUrl]: { accessible: true, checkedAt: 9_000 },
+      };
+
+      const results = await validateBadges([badge], '/tmp', {
+        timeout: 1000,
+        cache,
+      });
+
+      expect(results).toHaveLength(0);
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it('fetches when cache entry is expired', async () => {
+      vi.spyOn(Date, 'now').mockReturnValue(100_000_000);
+      mockFetch.mockResolvedValue({ ok: true });
+      const badge = makeBadge();
+      const cache = {
+        [badge.imageUrl]: { accessible: true, checkedAt: 0 },
+        [badge.linkUrl]: { accessible: true, checkedAt: 0 },
+      };
+
+      const results = await validateBadges([badge], '/tmp', {
+        timeout: 1000,
+        cache,
+      });
+
+      expect(results).toHaveLength(0);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('always fetches when noCache is true', async () => {
+      vi.spyOn(Date, 'now').mockReturnValue(10_000);
+      mockFetch.mockResolvedValue({ ok: true });
+      const badge = makeBadge();
+      const cache = {
+        [badge.imageUrl]: { accessible: true, checkedAt: 9_999 },
+        [badge.linkUrl]: { accessible: true, checkedAt: 9_999 },
+      };
+
+      const results = await validateBadges([badge], '/tmp', {
+        timeout: 1000,
+        cache,
+        noCache: true,
+      });
+
+      expect(results).toHaveLength(0);
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+    });
+
+    it('updates cache after fetch', async () => {
+      vi.spyOn(Date, 'now').mockReturnValue(12_345);
+      mockFetch.mockImplementation((url: string) => {
+        if (url === 'https://img.shields.io/test') {
+          return Promise.resolve({ ok: true });
+        }
+
+        return Promise.resolve({ ok: false });
+      });
+
+      const cache: Record<string, { accessible: boolean; checkedAt: number }> = {};
+      await validateBadges([makeBadge()], '/tmp', {
+        timeout: 1000,
+        cache,
+      });
+
+      expect(cache['https://img.shields.io/test']).toEqual({
+        accessible: true,
+        checkedAt: 12_345,
+      });
+      expect(cache['https://example.com']).toEqual({
+        accessible: false,
+        checkedAt: 12_345,
+      });
     });
   });
 });

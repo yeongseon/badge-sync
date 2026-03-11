@@ -1,11 +1,20 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import {
+  type CacheStore,
+  DEFAULT_CACHE_TTL,
+  getCachedResult,
+  setCacheEntry,
+} from './cache.js';
 import type { Badge, ValidationResult } from './types.js';
 
 interface ValidateBadgeOptions {
   timeout?: number;
   expectedOwner?: string | null;
   expectedRepo?: string | null;
+  cache?: CacheStore;
+  noCache?: boolean;
+  cacheTtl?: number;
 }
 
 /**
@@ -32,6 +41,9 @@ export async function validateBadges(
       timeout,
       options.expectedOwner ?? null,
       options.expectedRepo ?? null,
+      options.cache,
+      options.noCache ?? false,
+      options.cacheTtl ?? DEFAULT_CACHE_TTL,
     ),
   );
   const badgeResults = await Promise.all(validationPromises);
@@ -51,11 +63,14 @@ async function validateSingleBadge(
   timeout: number,
   expectedOwner: string | null,
   expectedRepo: string | null,
+  cache?: CacheStore,
+  noCache = false,
+  cacheTtl = DEFAULT_CACHE_TTL,
 ): Promise<ValidationResult[]> {
   const results: ValidationResult[] = [];
 
   // Check badge image URL
-  const imageOk = await checkUrl(badge.imageUrl, timeout);
+  const imageOk = await checkUrl(badge.imageUrl, timeout, cache, noCache, cacheTtl);
   if (!imageOk) {
     results.push({
       badge,
@@ -67,7 +82,7 @@ async function validateSingleBadge(
   }
 
   // Check badge link URL
-  const linkOk = await checkUrl(badge.linkUrl, timeout);
+  const linkOk = await checkUrl(badge.linkUrl, timeout, cache, noCache, cacheTtl);
   if (!linkOk) {
     results.push({
       badge,
@@ -116,21 +131,44 @@ async function validateSingleBadge(
 /**
  * Check if a URL is accessible via HTTP HEAD request.
  */
-async function checkUrl(url: string, timeout: number): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeout);
+async function checkUrl(
+  url: string,
+  timeout: number,
+  cache?: CacheStore,
+  noCache = false,
+  cacheTtl = DEFAULT_CACHE_TTL,
+): Promise<boolean> {
+  if (!noCache && cache) {
+    const cached = getCachedResult(cache, url, cacheTtl);
+    if (cached !== null) {
+      return cached;
+    }
+  }
 
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+
+  try {
     const response = await fetch(url, {
       method: 'HEAD',
       signal: controller.signal,
       redirect: 'follow',
     });
 
-    clearTimeout(timer);
-    return response.ok;
+    const accessible = response.ok;
+    if (!noCache && cache) {
+      setCacheEntry(cache, url, accessible);
+    }
+
+    return accessible;
   } catch {
+    if (!noCache && cache) {
+      setCacheEntry(cache, url, false);
+    }
+
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

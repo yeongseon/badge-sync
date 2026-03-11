@@ -95,13 +95,19 @@ export function createProgram(): Command {
     .option('--readme <path>', 'README file path')
     .option('--config <path>', 'Config file path')
     .option('--timeout <ms>', 'HTTP request timeout per badge URL', '5000')
-    .action(async (opts: { readme?: string; config?: string; timeout?: string }) => {
+    .option('--no-cache', 'Skip cache, always make HTTP requests', false)
+    .option('--refresh-cache', 'Clear cache before running', false)
+    .action(async (opts: { readme?: string; config?: string; timeout?: string; noCache?: boolean; refreshCache?: boolean }) => {
       const cwd = process.cwd();
       const config = await loadConfig(cwd, opts.config);
       if (opts.readme) config.readme = opts.readme;
 
       const timeout = parseInt(opts.timeout ?? '5000', 10);
-      const result = await doctorBadges(cwd, config, { timeout });
+      const result = await doctorBadges(cwd, config, {
+        timeout,
+        noCache: opts.noCache,
+        refreshCache: opts.refreshCache,
+      });
 
       if (result.issues.length === 0) {
         process.stdout.write('No issues found\n');
@@ -123,7 +129,9 @@ export function createProgram(): Command {
     .option('--config <path>', 'Config file path')
     .option('--dry-run', 'Print repairs without writing', false)
     .option('--timeout <ms>', 'HTTP request timeout per badge URL', '5000')
-    .action(async (opts: { readme?: string; config?: string; dryRun?: boolean; timeout?: string }) => {
+    .option('--no-cache', 'Skip cache, always make HTTP requests', false)
+    .option('--refresh-cache', 'Clear cache before running', false)
+    .action(async (opts: { readme?: string; config?: string; dryRun?: boolean; timeout?: string; noCache?: boolean; refreshCache?: boolean }) => {
       const cwd = process.cwd();
       const config = await loadConfig(cwd, opts.config);
       if (opts.readme) config.readme = opts.readme;
@@ -132,6 +140,8 @@ export function createProgram(): Command {
       const result = await repairBadges(cwd, config, {
         dryRun: opts.dryRun,
         timeout,
+        noCache: opts.noCache,
+        refreshCache: opts.refreshCache,
       });
 
       if (result.fixed.length === 0 && result.remaining.length === 0) {
