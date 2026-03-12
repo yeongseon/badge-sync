@@ -6,6 +6,8 @@
 [![license](https://img.shields.io/github/license/yeongseon/badge-sync)](https://github.com/yeongseon/badge-sync/blob/main/LICENSE)
 <!-- BADGES:END -->
 
+Read this in: [한국어](README.ko.md) | [日本語](README.ja.md) | [简体中文](README.zh-CN.md)
+
 Automatically detect, generate, validate, and repair README badges from your repository metadata.
 
 <p align="center">
